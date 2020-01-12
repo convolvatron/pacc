@@ -311,7 +311,7 @@ static Node conv(parse p, Node node) {
 }
 
 static boolean same_arith_type(Type t, Type u) {
-    return get(t, sym(kind)) == get(u, sym(kind)) && get(t, sym(usig)) == get(u, sym(usig));
+    return toboolean(get(t, sym(kind)) == get(u, sym(kind)) && get(t, sym(usig)) == get(u, sym(usig)));
 }
 
 static Node wrap(Type t, Node node) {
@@ -1409,7 +1409,7 @@ static Type read_func_param(parse p, buffer *name, boolean optional) {
 
 // Reads an ANSI-style prototyped function parameter list.
 static void read_declarator_params(parse p, vector types, vector vars, boolean *ellipsis) {
-    boolean typeonly = !vars;
+    boolean typeonly = toboolean(!vars);
     *ellipsis = false;
     for (;;) {
         tuple tok = token(p);
@@ -1912,7 +1912,7 @@ static Node read_goto_stmt(parse p) {
         return ast_computed_goto(expr);
     }
     tuple tok = token(p);
-    if (!tok || tok->kind != sym(ident))
+    if (!tok || (get(tok, sym(kind)) != sym(ident)))
         errort(tok, "identifier expected, but got %s", tok2s(tok));
     expect(p, semicolon);
     Node r = ast_goto(get(tok, sym(value)));
@@ -2008,7 +2008,7 @@ void make_numeric_type(scope s, symbol name, int length, boolean issigned)
 
 // should be streaming..staying away from conts
 tuple parse_init(buffer b) {
-    parse p = allocate(h, sizeof(struct parse));
+    parse p = allocate(sizeof(struct parse));
     p->b =b ;
     // chained set
     Type vt = timm("kind", sym(void));
@@ -2038,14 +2038,16 @@ tuple parse_init(buffer b) {
     semicolon = symq(";");
     colon = symq(":");
 
+    value voidptr;
+    
     define_builtin(p, sym(__builtin_return_address), v, voidptr);
     define_builtin(p, sym(__builtin_reg_class),
                    get(p, sym(types), sym(int)),
                    voidptr);
     // parameter list
-    define_builtin(p, sym(__builtin_va_arg), vt, timm(0, v, 1, v));
-    define_builtin(p, sym(__builtin_va_start), vt, timm(0, v));
-    p->global = p->env = allocate_scope(h, 0);
+    define_builtin(p, sym(__builtin_va_arg), vt, timm(0, voidptr, 1, voidptr));
+    define_builtin(p, sym(__builtin_va_start), vt, timm(0, voidptr));
+    p->global = p->env = allocate_scope(0);
     read_toplevels(p);
     return 0;
 }

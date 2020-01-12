@@ -14,8 +14,8 @@ typedef struct buffer *buffer;
 typedef void *value;
 typedef buffer string;
 typedef void *symbol;
-typedef value vector;
 typedef struct table *tuple;
+typedef tuple vector;
 typedef unsigned char u8;
 typedef unsigned int character;
 
@@ -47,10 +47,10 @@ buffer allocate_buffer();
 #define foreach(__k, __v, __t)\
     for(void *__k, *__v; ;)
 
-void append(buffer, character);
+void append(buffer, string);
 #define get(first, ...)  ((void *)0)
 
-#define toboolean(__x) ((__x)?true:false)
+#define toboolean(__x) ((void *)((__x)?true:false))
 
 void vector_push(tuple, value);
 #define symq(__x) ((void *)0)
@@ -62,5 +62,25 @@ void vector_push(tuple, value);
 #define value_from_u64(__x) ((void *)0)
 
 // no mutagens
-void vector_push();
-void vector_pop();
+void vector_push(vector v, value x);
+value vector_pop(vector v);
+typedef u64 bytes;
+void *allocate(bytes size);
+
+typedef char s8;
+
+static inline s8 digit_of(character x)
+{
+    if ((x <= 'f') && (x >= 'a')) return(x - 'a' + 10);
+    if ((x <= 'F') && (x >= 'A')) return(x - 'A' + 10);
+    if ((x <= '9') && (x >= '0')) return(x - '0');
+    return(-1);
+}
+
+// ignoring all the other valid alphas...like alpha
+static inline boolean isalpha(character x)
+{
+    if ((x <= 'z') && (x >= 'a')) return true;
+    if ((x <= 'Z') && (x >= 'A')) return true;
+    return false;
+}

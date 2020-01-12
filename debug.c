@@ -65,7 +65,7 @@ static void njoin(buffer dest, vector list, char sep)
     boolean first = true;
     value i;
     foreach(_, i, list) {
-        if (!first) buffer_write_byte(dest, sep);
+        if (!first) append(dest, sep);
         first = false;
         node2s(dest, i);
     }
@@ -135,7 +135,7 @@ static void node2s(buffer b, Node n) {
             if ((kind == sym(funcall)) || (kind == sym(funcptr_call))) {
                 bprintf(b, "(%s)", string_from_type(nty));
                 if (kind == sym(funcall))
-                    push_buffer(b, name);
+                    append(b, name);
                 else
                     node2s(b, n);
                 njoin(b, get(n, sym(arguments)), ',');
@@ -227,7 +227,7 @@ static void node2s(buffer b, Node n) {
             if (kind ==  sym(struct_ref)){
                 node2s(b, get(n, sym(struc)));
                 bprintf(b, ".");
-                push_buffer(b, get(n, sym(field)));
+                append(b, get(n, sym(field)));
                 return;
             }
             

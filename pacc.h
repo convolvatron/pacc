@@ -1,7 +1,6 @@
 #include <runtime.h>
 
 typedef struct scope *scope;
-typedef struct table *tuple;
 typedef tuple location;
 
 typedef tuple Type;
@@ -110,14 +109,15 @@ tuple parse_init(buffer b);
 #define warn(...)        
 #define warnt(tok, ...)  
 
-void errorf(char *line, char *pos, char *fmt, ...);
-void warnf(char *line, char *pos, char *fmt, ...);
+void errorp(parse p, ...);
+void errorf(tuple f, char *fmt, ...);
 
 boolean is_keyword(tuple tok, symbol c);
 tuple get_token(buffer b);
 
 tuple parse_init(buffer);
 
-scope allocate_scope(heap h, scope parent);
+scope allocate_scope(scope parent);
 #define INVALID_ADDRESS (-1ull)
 #define timm(...) ((tuple)0)
+

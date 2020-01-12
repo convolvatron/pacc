@@ -34,7 +34,7 @@ scope allocate_scope(scope parent)
 {
     scope s = allocate(sizeof(struct scope));
     s->o.get = sget_internal;
-    s->o.set = sget_internal;
+    //    s->o.set = sget_internal; yes or no?
     s->o.iterate = 0;// is this the local scope, or the union? seems like it has to be the union
     return s;
 }

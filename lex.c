@@ -21,11 +21,11 @@ static tuple make_char(location f, int c) {
     return timm(kind, sym(char), value, c, location, f);
 }
 
-static char readc(buffer b)
+static character readc(buffer b)
 {
-    u8 *r = *(u8*)b->contents + b->start;
+    u8 r = *(u8*)b->contents + b->start;
     b->start++;
-    return *r;
+    return r;
 }
 
 
@@ -47,11 +47,13 @@ static tuple read_number(buffer b) {
         // this actually checks for hex, but oddly is safe in this case
         if (digit_of(c) > 0 || isalpha(c)) {
             b->start++;
-            append(d, c);                    
+            // general vector operation
+            d = append(d, c);                    
         } else {
             return make_number(0, d);
         }
     }
+    return 0;
 }
 
 static boolean nextoct(buffer b) {
@@ -136,17 +138,17 @@ static tuple read_string(buffer b) {
     return make_token(0, d);
 }
 
-static tuple read_ident(heap h, buffer b) {
+static tuple read_ident(buffer b) {
     buffer d = allocate_buffer();
     for (;;) {
-        u8 c = get(b, 0);
+        character c = get(b, 0);
         // check to make sure this handles utf8
         if ((digit_of(c) > 0) || isalpha(c) || (c & 0x80) || c == '_' || c == '$') {
             append(d, c);
             b->start++;
             continue;
         }
-        return make_ident(h, d);
+        return make_ident(d);
     }
 }
 
@@ -222,12 +224,16 @@ static tuple do_read_token(buffer b) {
     return 0;
 }
 
+buffer skip_whitespace(buffer b){
+    return b;
+}
+
 tuple get_token(buffer b) {
     skip_whitespace(b);
     return do_read_token(b);
 }
     
 boolean is_keyword(tuple tok, symbol c) {
-    return toboolean(get(tok, sym(kind)) == sym(keyword)) && (get(tok, sym(id)) == c);
+    return toboolean((get(tok, sym(kind)) == sym(keyword)) && (get(tok, sym(id)) == c));
 }
  
