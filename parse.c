@@ -1,9 +1,6 @@
+
 // Copyright 2012 Rui Ueyama. Released under the MIT license.
 #include "pacc.h"
-
-static symbol close_paren, open_paren, comma, close_brace, open_brace, semicolon,
-    open_bracket, close_bracket, colon;
-
 
 enum {
     DECL_BODY = 1,
@@ -13,6 +10,9 @@ enum {
 };
 
 #define NULL ((void *)0)
+
+void errorf(location tuple, char *format, ...) {
+}
 
 tuple token(parse p)
 {
@@ -205,10 +205,6 @@ static Type make_func_type(Type rettype, vector paramtypes, boolean has_varargs)
                 "hasva",  has_varargs);
 }
 
-static Type make_stub_type() {
-    return timm("kind", sym(stub));
-}
-
 /*
  * Predicates and kind checking routines
  */
@@ -251,15 +247,6 @@ static void expect(parse p, symbol id) {
     tuple tok = get_token(p->b);
     if (!is_keyword(tok, id))
         errort(tok, "'%c' expected, but got %s", id, string_from_token(transient, tok));
-}
-
-// eh?
-static Type copy_incomplete_type(Type ty) {
-    tuple out = timm();
-    foreach(k, v, ty) {
-        set(out, k, v);
-    }
-    return out;
 }
 
 static Type get_typedef(parse p, symbol name) {
@@ -335,17 +322,17 @@ static Type usual_arith_conv(parse p, Type t, Type u) {
             return t;
     if (get(t, sym(signed)) == get(u, sym(signed)))
         return t;
-    Type r = copy_type(t);
+    Type r = allocate_scope(t); 
     set(r, sym(signed), sym(true));
     return r;
 }
 
 // op property
 static boolean valid_pointer_binop(symbol op) {
-    if (op == sym(-) ||
-        op == sym(<) ||
-        op == sym(>) ||
-        op == sym(=) ||
+    if (op == minus ||
+        op == less_than ||
+        op == greater_than ||
+        op == equals ||
         op == sym(!=) ||
         op == sym(<=) ||
         op == sym(>=))
@@ -698,21 +685,21 @@ static vector read_rectype_fields_sub(parse p) {
             break;
         Type basetype = read_decl_spec(p, NULL);
         if (get(basetype, sym(kind)) == sym(struct) && next_token(p, sym(;))) {
-            vector_push(r, timm(type, basetype));
+            push(r, timm(type, basetype));
             continue;
         }
         for (;;) {
             buffer name = NULL;
             Type fieldtype = read_declarator(p, &name, basetype, NULL, DECL_PARAM_TYPEONLY);
             ensure_not_void(fieldtype);
-            fieldtype = copy_type(fieldtype);
+            fieldtype = allocate_scope(fieldtype);
             if (next_token(p, colon))
                 set(fieldtype, sym(bitsize), read_bitsize(p, name, fieldtype));
-            vector_push(r, timm(name, name, type, fieldtype));
+            push(r, timm(name, name, type, fieldtype));
             if (next_token(p, comma))
                 continue;
             if (is_keyword(token(p), close_brace))
-                errorp(p, "missing ';' at the end of field list");
+                errorf(p, "missing ';' at the end of field list");
             else
                 expect(p, semicolon);
             break;
@@ -780,7 +767,7 @@ static vector read_func_args(parse p,  vector params) {
         ensure_assignable(paramtype, ty);
         if (get(paramtype, sym(kind)) != get(arg, sym(type), sym(kind)))
             arg = ast_conv(paramtype, arg);
-        vector_push(args, arg);
+        push(args, arg);
         tuple tok = token(p);
         if (is_keyword(tok, close_paren)) break;
         if (!is_keyword(tok, comma))
@@ -807,7 +794,7 @@ static Node read_var_or_func(parse p, buffer name) {
             errort(tok, "undefined variable: %s", name);
         Type ty = make_func_type(get(p->global, sym(type), sym(int)),
                                  timm(), false);
-        warnt(tok, "assume returning int: %s()", name);
+        // warnt(tok, "assume returning int: %s()", name);
         return ast_funcdesg(ty, name);
     }
     // so..funcdesg is really just a variable of function type?
@@ -953,7 +940,7 @@ static Node read_label_addr(parse p, tuple tok) {
     if (get(tok2, sym(kind)) != sym(ident))
         errort(tok, "label name expected after &&, but got %s", tok2s(tok2));
     Node r = ast_label_addr(p, get(tok2, sym(value)));
-    vector_push(get(p->env, sym(gotos)), r);
+    push(get(p->env, sym(gotos)), r);
     return r;
 }
 
@@ -1019,8 +1006,8 @@ static Node read_unary_expr(parse p) {
     return read_postfix_expr(p);
 }
  
- static boolean is_string(Type ty) {
-     return toboolean(get(ty, sym(kind)) == sym(array)) && (get(ty, sym(ptr), sym(kind)) == sym(char));
+static boolean is_string(Type ty) {
+    return toboolean((get(ty, sym(kind)) == sym(array)) && (get(ty, sym(ptr), sym(kind)) == sym(char)));
 }
 
 
@@ -1031,9 +1018,9 @@ static void assign_string(parse p, vector inits, Type ty, buffer s) {
      ty->len = ty->size = buffer_length(s);
  int i = 0;
  for (; i < ty->len && *p; i++)
-     vector_push(inits, ast_init(ast_inttype(p, p->type_char, *p++), p->type_char, off + i));
+     push(inits, ast_init(ast_inttype(p, p->type_char, *p++), p->type_char, off + i));
  for (; i < ty->len; i++)
-     vector_push(inits, ast_init(ast_inttype(p, p->type_char, 0), p->type_char, off + i));
+     push(inits, ast_init(ast_inttype(p, p->type_char, 0), p->type_char, off + i));
 }
 #endif
 
@@ -1057,7 +1044,7 @@ static void skip_to_brace(parse p) {
         Node ignore = read_assignment_expr(p);
         if (!ignore)
             return;
-        warnt(tok, "excessive initializer: %s", node2s(ignore));
+        // warnt(tok, "excessive initializer: %s", node2s(ignore));
         maybe_skip_comma(p);
     }
 }
@@ -1066,7 +1053,7 @@ static void read_initializer_elem(parse p, vector inits, Type ty, boolean design
 
 static void read_array_initializer(parse p, vector inits, Type ty, boolean designated) {
     boolean has_brace = maybe_read_brace(p);
-    boolean flexible = (get(ty, sym(len)) <= 0);
+    boolean flexible = toboolean(get(ty, sym(len)) <= 0);
     value elemsize = get(ty, sym(ptr), sym(size));
     int i;
     for (i = 0; flexible || i < u64_from_value(get(ty, sym(len))); i++) {
@@ -1155,7 +1142,7 @@ static void read_initializer_list(parse p,
             assign_string(p, inits, ty, v);
             return;
         }
-        if (is_keyword(tok, open_brace) && token(p)->kind == sym(string)) {
+        if (is_keyword(tok, open_brace) && (get(p, sym(kind)) == sym(string))) {
             tok = token(p);
             assign_string(p, inits, ty, v);
             expect(p, close_brace);
@@ -1183,7 +1170,7 @@ static vector read_decl_init(parse p, Type ty) {
         Node init = conv(p, read_assignment_expr(p));
         if (is_inttype(get(init, sym(type))) && get(init, sym(type), sym(kind)) != get(ty, sym(kind)))
             init = ast_conv(ty, init);
-        vector_push(r, ast_init(init, ty));
+        push(r, ast_init(init, ty));
     }
     return r;
 }
@@ -1381,7 +1368,7 @@ static void read_initializer_elem(parse p, vector inits, Type ty, boolean design
     } else {
         Node expr = conv(p, read_assignment_expr(p));
         ensure_assignable(ty, get(expr, sym(type)));
-        vector_push(inits, ast_init(expr, ty));
+        push(inits, ast_init(expr, ty));
     }
 }
 
@@ -1423,9 +1410,9 @@ static void read_declarator_params(parse p, vector types, vector vars, boolean *
         buffer name;
         Type ty = read_func_param(p, &name, typeonly);
         ensure_not_void(ty);
-        vector_push(types, ty);
+        push(types, ty);
         if (!typeonly)
-            vector_push(vars, ast_var(p->env, ty, name));
+            push(vars, ast_var(p->env, ty, name));
         tok = token(p);
         if (is_keyword(tok, close_paren))
             return;
@@ -1462,7 +1449,7 @@ static Type read_func_param_list(parse p, vector paramvars, Type rettype) {
         errort(tok, "invalid function definition");
     vector paramtypes = timm();
     //    for (int i = 0; i < vector_length(paramvars); i++)
-    //  vector_push(paramtypes,  get(p->global, sym(type), sym(int)));
+    //  push(paramtypes,  get(p->global, sym(type), sym(int)));
     return make_func_type(rettype, paramtypes, false);
 }
 
@@ -1516,10 +1503,10 @@ static Type read_declarator(parse p, buffer *rname, Type basety, vector params, 
         // a recursive call, or otherwise we would get "pointer to int".
         // Here, we pass a dummy object to get "pointer to <something>" first,
         // continue reading to get "function returning int", and then combine them.
-        Type stub = make_stub_type();
+        Type stub = timm("kind", sym(stub)); // stub type
         Type t = read_declarator(p, rname, stub, params, ctx);
         expect(p, close_paren);
-        *stub = *read_declarator_tail(p, basety, params);
+        stub = read_declarator_tail(p, basety, params);
         return t;
     }
     if (next_token(p, sym(*))) {
@@ -1550,7 +1537,7 @@ static void read_static_local_var(parse p, Type ty, buffer name) {
         init = read_decl_init(p, ty);
     }
     set(p->env, intern(name), ast_decl(var, init));
-    //    vector_push(p->toplevels, ast_decl(var, init));
+    //    push(p->toplevels, ast_decl(var, init));
 }
 
 // scope? - not really
@@ -1562,7 +1549,7 @@ static void read_decl(parse p, vector block) {
         return;
     for (;;) {
         buffer name = NULL;
-        Type ty = read_declarator(p, &name, copy_incomplete_type(basetype), NULL, DECL_BODY);
+        Type ty = read_declarator(p, &name, basetype, NULL, DECL_BODY); // copy basetype
         // why do we care ..storage scope
         if (sclass == sym(static)) {
             set(ty, sym(isstatic), sym(true));
@@ -1578,9 +1565,9 @@ static void read_decl(parse p, vector block) {
             ensure_not_void(ty);
             Node var = ast_var((isglobal ? p->global : p->env), ty, name);
             if (next_token(p, sym(=))) {
-                vector_push(block, ast_decl(var, read_decl_init(p, ty)));
+                push(block, ast_decl(var, read_decl_init(p, ty)));
             } else if (sclass != sym(extern) && get(ty, sym(kind)) != sym(func)) {
-                vector_push(block, ast_decl(var, NULL));
+                push(block, ast_decl(var, NULL));
             }
         }
         if (next_token(p, semicolon))
@@ -1606,7 +1593,7 @@ static void skip_parentheses(parse p, vector buf) {
         tuple tok = token(p);
         if (get(tok, sym(kind)) == sym(eof))
             error("premature end of input");
-        vector_push(buf, tok);
+        push(buf, tok);
         if (is_keyword(tok, close_paren))
             return;
         if (is_keyword(tok, open_paren))
@@ -1625,7 +1612,7 @@ static boolean is_funcdef(parse p) {
     for (;;) {
         tuple tok = token(p);
         value k = get(token, sym(kind));
-        vector_push(buf, tok);
+        push(buf, tok);
         if (k == sym(eof))
             error("premature end of input");
         if (is_keyword(tok, semicolon))
@@ -1640,9 +1627,9 @@ static boolean is_funcdef(parse p) {
             continue;
         if (!is_keyword(tok, open_paren))
             continue;
-        vector_push(buf, token(p));
+        push(buf, token(p));
         skip_parentheses(p, buf);
-        r = (is_keyword(token(p), open_brace) || is_type(p, token(p)));
+        r = toboolean(is_keyword(token(p), open_brace) || is_type(p, token(p)));
         break;
     }
     //    while (vector_len(buf) > 0)
@@ -1708,7 +1695,7 @@ static void read_decl_or_stmt(parse p, vector list) {
     } else {
         Node stmt = read_stmt(p);
         if (stmt)
-            vector_push(list, stmt);
+            push(list, stmt);
     }
 }
 
@@ -1738,17 +1725,17 @@ static Node read_for_stmt(parse p) {
 
     vector v = timm();
     if (init)
-        vector_push(v, init);
-    vector_push(v, ast_dest(beg));
+        push(v, init);
+    push(v, ast_dest(beg));
     if (cond)
-        vector_push(v, ast_if(cond, NULL, ast_jump(end)));
+        push(v, ast_if(cond, NULL, ast_jump(end)));
     if (body)
-        vector_push(v, body);
-    vector_push(v, ast_dest(mid));
+        push(v, body);
+    push(v, ast_dest(mid));
     if (step)
-        vector_push(v, step);
-    vector_push(v, ast_jump(beg));
-    vector_push(v, ast_dest(end));
+        push(v, step);
+    push(v, ast_jump(beg));
+    push(v, ast_dest(end));
     return ast_compound_stmt(v);
 }
 
@@ -1766,10 +1753,10 @@ static Node read_while_stmt(parse p) {
     pop_scope(p);    
 
     vector v = timm();
-    vector_push(v, ast_dest(beg));
-    vector_push(v, ast_if(cond, body, ast_jump(end)));
-    vector_push(v, ast_jump(beg));
-    vector_push(v, ast_dest(end));
+    push(v, ast_dest(beg));
+    push(v, ast_if(cond, body, ast_jump(end)));
+    push(v, ast_jump(beg));
+    push(v, ast_dest(end));
     return ast_compound_stmt(v);
 }
 
@@ -1788,31 +1775,28 @@ static Node read_do_stmt(parse p) {
     expect(p, semicolon);
 
     vector v = timm();
-    vector_push(v, ast_dest(beg));
+    push(v, ast_dest(beg));
     if (body)
-        vector_push(v, body);
-    vector_push(v, ast_if(cond, ast_jump(beg), NULL));
-    vector_push(v, ast_dest(end));
+        push(v, body);
+    push(v, ast_if(cond, ast_jump(beg), NULL));
+    push(v, ast_dest(end));
     return ast_compound_stmt(v);
 }
 
-static Node make_switch_jump(parse p, Node var, Case *c) {
+static Node make_switch_jump(parse p, Node var, tuple c) {
     Node cond;
     Type int_type = get(p, sym(type), sym(int)); // ?    
-    if (c->beg == c->end) {
+    if (get(c, sym(beg)) == get(c, sym(end))) {
         Type type_int = get(p->global, sym(type), sym(int));
         cond = ast_binop(p, type_int, sym(=), var, ast_inttype(p, int_type,
                                                                value_from_u64(c->beg)));
     } else {
         // [GNU] case i ... j is compiled to if (i <= cond && cond <= j) goto <label>.
-        Node x = ast_binop(p, int_type, sym(>=), ast_inttype(p, int_type,
-                                                             value_from_u64(c->beg)),
-                           var);
-        Node y = ast_binop(p, int_type, sym(<=), var, ast_inttype(p, int_type,
-                                                                  value_from_u64(c->end)));
+        Node x = ast_binop(p, int_type, sym(>=), ast_inttype(p, int_type, get(c, sym(beg))), var);
+        Node y = ast_binop(p, int_type, sym(<=), var, ast_inttype(p, int_type, get(c, sym(end))));
         cond = ast_binop(p, int_type, sym(logand), x, y);
     }
-    return ast_if(cond, ast_jump(c->label), NULL);
+    return ast_if(cond, ast_jump(c), NULL);
 }
 
 static Node read_switch_stmt(parse p)
@@ -1827,14 +1811,15 @@ static Node read_switch_stmt(parse p)
     Node body = read_stmt(p);
     vector v = timm();
     Node var = ast_var(p->env, get(expr, sym(type)), make_tempname());
-    vector_push(v, ast_binop(p, get(expr, sym(type)), sym(=), var, expr));
-    for (int i = 0; i < vector_length(get(p->env, sym(cases))); i++)
-        vector_push(v, make_switch_jump(p, var, vector_get(get(p->env, sym(cases)), i)));
+    // immutable?
+    push(v, ast_binop(p, get(expr, sym(type)), sym(=), var, expr));
+    foreach (i, v, get(p->env, sym(cases))) 
+        push(v, make_switch_jump(p, var, get(get(p->env, sym(cases)), i)));
     value d = get(p->env, sym(defaultcase));
-    vector_push(v, ast_jump(d ?d : end));
+    push(v, ast_jump(d ?d : end));
     if (body)
-        vector_push(v, body);
-    vector_push(v, ast_dest(end));
+        push(v, body);
+    push(v, ast_dest(end));
     pop_scope(p);    
     return ast_compound_stmt(v);
 }
@@ -1842,9 +1827,9 @@ static Node read_switch_stmt(parse p)
 static Node read_label_tail(parse p, Node label) {
     Node stmt = read_stmt(p);
     vector v = timm();
-    vector_push(v, label);
+    push(v, label);
     if (stmt)
-        vector_push(v, stmt);
+        push(v, stmt);
     return ast_compound_stmt(v);
 }
 
@@ -1859,10 +1844,10 @@ static Node read_case_label(parse p, tuple tok) {
         expect(p, colon);
         if (beg > end)
             errort(tok, "case region is not in correct order: %d ... %d", beg, end);
-        vector_push(cases, make_case(beg, end, label));
+        push(cases, make_case(beg, end, label));
     } else {
         expect(p, colon);
-        vector_push(cases, make_case(beg, beg, label));
+        push(cases, make_case(beg, beg, label));
     }
     // inline - this seems..broken anyways - do it on insert!
     //     check_case_duplicates(cases);
@@ -1917,7 +1902,7 @@ static Node read_goto_stmt(parse p) {
     expect(p, semicolon);
     Node r = ast_goto(get(tok, sym(value)));
     // why...am I keep track of the gotos? for fixup?
-    vector_push(get(p, sym(gotos)), r);
+    push(get(p, sym(gotos)), r);
     return r;
 }
 

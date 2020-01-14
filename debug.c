@@ -60,7 +60,7 @@ static void binop_to_string(buffer b, symbol s, Node node)
     bprintf(b, ")");    
 }
 
-static void njoin(buffer dest, vector list, char sep)
+static void njoin(buffer dest, vector list, string sep)
 {
     boolean first = true;
     value i;
@@ -72,7 +72,7 @@ static void njoin(buffer dest, vector list, char sep)
 }
 
 static void a2s_declinit(buffer b, vector initlist) {
-    njoin(b, initlist, ' ');
+    njoin(b, initlist, space);
 }
 
 int value_to_integer(value v)
@@ -80,7 +80,8 @@ int value_to_integer(value v)
     return 0;
 }
   
-static void node2s(buffer b, Node n) {
+static void node2s(buffer b, Node n)
+{
     if (!n) {
         bprintf(b, "(nil)");
         return;
@@ -138,7 +139,7 @@ static void node2s(buffer b, Node n) {
                     append(b, name);
                 else
                     node2s(b, n);
-                njoin(b, get(n, sym(arguments)), ',');
+                njoin(b, get(n, sym(arguments)), comma);
                 bprintf(b, ")");
                 return;
             }
@@ -150,7 +151,7 @@ static void node2s(buffer b, Node n) {
             
             if (kind == sym(func)) {
                 bprintf(b, "(%s)%s(", string_from_type(nty), name);
-                njoin(b, get(nty, sym(params)), ',');
+                njoin(b, get(nty, sym(params)), comma);
                 bprintf(b, ")");
                 node2s(b, get(n, sym(body)));
                 return;
@@ -166,10 +167,10 @@ static void node2s(buffer b, Node n) {
                         string_from_type(get(n, sym(declvar), sym(type))),
                         get(n, sym(declvar), sym(name)));
                 if ( get(n, sym(declinit))){
-                    bprintf(b, " ");
+                    bprintf(b, space);
                     a2s_declinit(b, get(n, sym(init)));
                 }
-                bprintf(b, ")");
+                bprintf(b, close_paren);
                 return;
             }
             
@@ -219,14 +220,14 @@ static void node2s(buffer b, Node n) {
             
             if (kind ==  sym(compound_stmt)) {
                 bprintf(b, "{");
-                njoin(b, get(n, sym(stmts)), ';');                
+                njoin(b, get(n, sym(stmts)), semicolon);                
                 bprintf(b, "}");
                 return;
             }
             
             if (kind ==  sym(struct_ref)){
                 node2s(b, get(n, sym(struc)));
-                bprintf(b, ".");
+                bprintf(b, period);
                 append(b, get(n, sym(field)));
                 return;
             }
