@@ -9,6 +9,8 @@ typedef void *value;
     for (__builtin_va_list _va; __builtin_va_start(_va, __start), 1; ) \
         for (void *_x;  _x=__builtin_va_arg(_va, value), _x != INVALID_ADDRESS; )
 
+typedef unsigned long long u64;
+
 typedef struct heap *heap;
 typedef struct buffer *buffer;
 typedef void *value;
@@ -17,14 +19,15 @@ typedef void *symbol;
 typedef struct table *tuple;
 typedef tuple vector;
 typedef unsigned char u8;
-typedef unsigned int character;
+typedef string character;
+
+typedef u64 bits;
 
 typedef struct buffer {
-    u8 start, end, length;
+    bits start, end, length;
     u8 *contents;
-} *bufer;
+} *buffer;
     
-typedef unsigned long u64;
 
 typedef value boolean;
 
@@ -47,7 +50,7 @@ buffer allocate_buffer();
 #define foreach(__k, __v, __t)\
     for(void *__k, *__v; ;)
 
-void append(buffer, string);
+buffer append(buffer, string);
 #define get(first, ...)  ((void *)0)
 
 #define toboolean(__x) ((void *)((__x)?true:false))
@@ -69,8 +72,9 @@ void *allocate(bytes size);
 
 typedef char s8;
 
-static inline s8 digit_of(character x)
+static inline s8 digit_of(character z)
 {
+    u8 x = *(u8 *)(z->contents + z->start); 
     if ((x <= 'f') && (x >= 'a')) return(x - 'a' + 10);
     if ((x <= 'F') && (x >= 'A')) return(x - 'A' + 10);
     if ((x <= '9') && (x >= '0')) return(x - '0');
@@ -78,9 +82,15 @@ static inline s8 digit_of(character x)
 }
 
 // ignoring all the other valid alphas...like alpha
-static inline boolean isalpha(character x)
+static inline boolean isalpha(character z)
 {
+    u8 x = *(u8 *)(z->contents + z->start); 
     if ((x <= 'z') && (x >= 'a')) return true;
     if ((x <= 'Z') && (x >= 'A')) return true;
     return false;
 }
+
+void push(value, value);
+typedef struct scope *scope;
+scope allocate_scope(scope);
+value cstring();

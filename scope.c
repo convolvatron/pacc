@@ -1,6 +1,6 @@
 #include <pacc.h>
 
-typedef struct scope *scope;
+
 
 struct scope {
     struct object o;
@@ -21,11 +21,11 @@ value scope_get(scope s, symbol k)
 //}
 
 
-value sget_internal(tuple t, ...)
+value sget_internal(void *z, ...)
 {
-    value v = t;
+    value v = z;
     // empty is a valid map
-    foreach_arg(t, x) v = get(v, x);
+    foreach_arg(z, x) v = get(v, x);
     return v;
 }
 
