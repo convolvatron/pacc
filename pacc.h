@@ -109,7 +109,7 @@ tuple get_token(buffer b);
 tuple parse_init(buffer);
 
 tuple allocate_tuple(tuple parent);
-#define INVALID_ADDRESS (-1ull)
+#define INVALID_ADDRESS ((void *)(-1ull))
 #define timm(...) ((tuple)0)
 
 symbol close_paren, open_paren, close_brace, open_brace, close_bracket, open_bracket, less_than, greater_than,

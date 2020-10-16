@@ -1,11 +1,10 @@
 #include <pacc.h>
 
-typedef struct scope *scope;
-
-struct scope {
+struct tuple {
     struct object o;
-    tuple here;
     scope parent;
+    u64 size;
+    value elements[]; 
 };
     
 value scope_get(scope s, symbol k)
@@ -21,16 +20,16 @@ value scope_get(scope s, symbol k)
 //}
 
 
-value sget_internal(tuple t, ...)
+value sget_internal(value v, ...)
 {
-    value v = t;
+    scope s = v;
     // empty is a valid map
-    foreach_arg(t, x) v = get(v, x);
+    foreach_arg(v, x) v = get(v, x);
     return v;
 }
 
 
-scope allocate_scope(scope parent)
+tuple allocate_scope(scope parent)
 {
     scope s = allocate(sizeof(struct scope));
     s->o.get = sget_internal;
@@ -38,3 +37,4 @@ scope allocate_scope(scope parent)
     s->o.iterate = 0;// is this the local scope, or the union? seems like it has to be the union
     return s;
 }
+
