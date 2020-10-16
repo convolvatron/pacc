@@ -3,6 +3,9 @@
 #include <unistd.h>
 #include <pacc.h>
 
+void halt();
+void standardout();
+
 buffer read_file(string filename)
 {
     struct stat st;
