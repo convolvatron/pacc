@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <pacc.h>
 
+#if 0
 void halt();
 void standardout();
 
@@ -26,11 +27,19 @@ buffer read_file(string filename)
     out->end = len;
     return out;
 }
+#endif
 
 int main(int argc, char **argv)
 {
-    for (int i = 1 ;i <argc; i++ ){
-        standardout(aprintf ("%v", parse_init(read_file(cstring(argv[i])))));
-    }
+    char *x="int main() {return 5;}";
+    struct buffer b;
+    b.start = 0;
+    b.end=sizeof(x);
+    b.contents = (u8 *)x;
+    parse_init(&b);
+    
+    //    for (int i = 1 ;i <argc; i++ ){
+    //        standardout(aprintf ("%v", parse_init(read_file(cstring(argv[i])))));
+    //    }
 }
 
