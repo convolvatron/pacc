@@ -91,4 +91,6 @@ static inline boolean isalpha(character z)
 }
 
 void push(value, value);
-tuple allocate_scope(tuple);
+typedef struct scope *scope;
+scope allocate_scope(scope);
+value cstring();

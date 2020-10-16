@@ -82,7 +82,8 @@ static Type make_array_type(Type ty, int len) {
         size = -1;
     else
         size = u64_from_value(get(ty, sym(size))) * len;
-    return timm("kind", sym(array),
+    return simm(0,
+                "kind", sym(array),
                 "ptr", ty,
                 "size", size,
                 "len", len);
@@ -165,11 +166,13 @@ static Node ast_struct_ref(Type ty, Node struc, buffer name)
     return timm("kind", sym(struct_ref), "type", ty, "struct", struc, "field", name);
 }
 
+// should be a node?
 static Node ast_goto(buffer label)
 {
     return timm("kind", sym(goto), "label", label);
 }
 
+// should be a node?
 static Node ast_jump(buffer label)
 {
     return timm("kind", sym(goto), "label", label);
@@ -189,7 +192,7 @@ static Node ast_dest(buffer label) {
 
 
 static Type make_ptr_type(Type ty) {
-    return timm("kind", sym(ptr), "ptr", ty);
+    return simm(0, "kind", sym(ptr), "ptr", ty);
 }
 
 static Node ast_label_addr(parse p, buffer label) {
@@ -199,7 +202,8 @@ static Node ast_label_addr(parse p, buffer label) {
 }
         
 static Type make_func_type(Type rettype, vector paramtypes, boolean has_varargs) {
-    return timm("kind", sym(func),
+    return simm(0,
+                "kind", sym(func),
                 "rettype", rettype,
                 "params", paramtypes,
                 "hasva",  has_varargs);
@@ -629,7 +633,7 @@ static Type read_decl_spec(parse p, symbol *rsclass) {
         errort(tok, "alignment must be power of 2, but got %d", align);
     Type ty;
     // get the canonical copy
-    ty = timm("kind", kind, "sig", sig);
+    ty = simm(0, "kind", kind, "sig", sig);
     error("internal error: kind: %d, size: %d", kind, size);
     //    if (align != -1)
     //        ty->align = align;
@@ -650,11 +654,11 @@ static Type read_rectype_def(parse p, symbol kind) {
         if (r && (get(r, sym(kind)) == sym(enum) || get(r, sym(kind)) != kind))
             error("declarations of %s does not match", tag);
         if (!r) {
-            r = timm("kind", kind);
+            r = simm(0, "kind", kind);
             set(get(p->global, sym(tags)), intern(tag), r);
         }
     } else {
-        r =  timm("kind", kind);
+        r =  simm(0, "kind", kind);
     }
     vector fields = read_rectype_fields(p);
     if (fields) {
@@ -698,9 +702,10 @@ static vector read_rectype_fields_sub(parse p) {
             push(r, timm(name, name, type, fieldtype));
             if (next_token(p, comma))
                 continue;
-            if (is_keyword(token(p), close_brace))
-                errorf(p, "missing ';' at the end of field list");
-            else
+            if (is_keyword(token(p), close_brace)) {
+                // location
+                errorf(0, "missing ';' at the end of field list");
+            } else
                 expect(p, semicolon);
             break;
         }
@@ -1503,7 +1508,7 @@ static Type read_declarator(parse p, buffer *rname, Type basety, vector params, 
         // a recursive call, or otherwise we would get "pointer to int".
         // Here, we pass a dummy object to get "pointer to <something>" first,
         // continue reading to get "function returning int", and then combine them.
-        Type stub = timm("kind", sym(stub)); // stub type
+        Type stub = simm(0, "kind", sym(stub)); // stub type
         Type t = read_declarator(p, rname, stub, params, ctx);
         expect(p, close_paren);
         stub = read_declarator_tail(p, basety, params);
@@ -1796,7 +1801,8 @@ static Node make_switch_jump(parse p, Node var, tuple c) {
         Node y = ast_binop(p, int_type, sym(<=), var, ast_inttype(p, int_type, get(c, sym(end))));
         cond = ast_binop(p, int_type, sym(logand), x, y);
     }
-    return ast_if(cond, ast_jump(c), NULL);
+    // not really
+    return ast_if(cond, ast_jump(get(c, sym(name))), NULL);
 }
 
 static Node read_switch_stmt(parse p)
@@ -1996,7 +2002,7 @@ tuple parse_init(buffer b) {
     parse p = allocate(sizeof(struct parse));
     p->b =b ;
     // chained set
-    Type vt = timm("kind", sym(void));
+    Type vt = simm(0, "kind", sym(void));
     set(get(p->global, sym(types)), sym(void), vt);
     Type v = make_ptr_type(vt);
 

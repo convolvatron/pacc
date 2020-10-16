@@ -3,15 +3,18 @@
 #include <unistd.h>
 #include <pacc.h>
 
+void halt();
+void standardout();
+
 buffer read_file(string filename)
 {
     struct stat st;
     unsigned char *n = aprintf("%s\0", filename)->contents;
-    if (stat(n, &st) < 0) {
+    if (stat((const char*)n, &st) < 0) {
         halt("no such file %b", filename);
     }
     int len = st.st_size;
-    int fd = open(n, O_RDONLY);
+    int fd = open((const char*)n, O_RDONLY);
     if (fd < 0) {
         error("couldn't open file %b", filename);
     }
