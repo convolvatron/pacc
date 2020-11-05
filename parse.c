@@ -14,9 +14,13 @@ enum {
 void errorf(location tuple, char *format, ...) {
 }
 
+// consumption - lets just keep the head in a separate place?
 tuple token(parse p)
 {
-    return 0;
+    buffer n = allocate_buffer();
+    buffer character = utf8_deframe(p->b, p->offset);
+    p->offset += length(character);
+    return timm("value", n, "position", p->offset);
 }
 
 static void push_scope(parse p)
@@ -753,7 +757,7 @@ static Node read_alignof_operand(parse p) {
 }
 
 static vector read_func_args(parse p,  vector params) {
-    vector args = timm();
+    vector args = timm(); // finalize...we can have a larva, write or read, lets not today
     int i = 0;
     for (;;) {
         if (next_token(p, close_paren)) break;
@@ -772,7 +776,7 @@ static vector read_func_args(parse p,  vector params) {
         ensure_assignable(paramtype, ty);
         if (get(paramtype, sym(kind)) != get(arg, sym(type), sym(kind)))
             arg = ast_conv(paramtype, arg);
-        push(args, arg);
+        args = push(args, arg);
         tuple tok = token(p);
         if (is_keyword(tok, close_paren)) break;
         if (!is_keyword(tok, comma))
@@ -823,13 +827,18 @@ static Node vector_tail(vector r)
 }
 
 
+static value vector_peek(vector v)
+{
+    return zero;
+}
+
 static Node read_stmt_expr(parse p) {
     Node r = read_compound_stmt(p);
     expect(p, close_paren);
     Type rtype = get(p->global, sym(type), sym(void));
     value st = get(r, "statements");
     if (size(st) > 0) {
-        Node lastexpr = vector_pop(st);
+        Node lastexpr = vector_peek(st); 
         value v;
         if ((v = get(lastexpr, sym(type))))
             rtype = v;
@@ -1964,7 +1973,8 @@ static Node read_compound_stmt(parse p) {
 
 vector read_toplevels(parse p) {
     vector top = timm();
-    for (;;) {
+    token(p);    
+    while (true)  {
         if (get(token(p), sym(kind)) == sym(eof))
             return 0;
         if (is_funcdef(p))

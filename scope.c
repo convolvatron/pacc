@@ -23,14 +23,14 @@ value scope_get(value z, value k)
 
 value sget_internal(value v, ...)
 {
-    scope s = v;
+    //scope s = v;
     // empty is a valid map
     foreach_arg(v, x) v = get(v, x);
     return v;
 }
 
 
-tuple allocate_scope(scope parent)
+scope allocate_scope(scope parent)
 {
     scope s = allocate(sizeof(struct scope));
     s->o.get = scope_get;
