@@ -3,22 +3,24 @@
 #include <string.h>
 #include <stdlib.h>
 #include <runtime.h>
+#include <unistd.h>
 
 u64 fills[tag_max];
 u64 lengths[tag_max];
 
 
-__attribute__((noreturn)) void halt()
+__attribute__((noreturn)) void halt(char *x)
 {
+    write(1, x, strlen(x));
     exit(-1);
 }
 
 #define bitsizeof(_x) (sizeof(_x)*8)
-#define contents(__b) ((void *)(&(b)->contents))
 
-static buffer allocate(tag t, bits length)
+buffer allocate(tag t, bits length)
 {
     buffer b = (buffer)((t << tag_offset) | fills[t]);
+
     b->length = length;
     fills[t] += length;
     return b;    
@@ -44,7 +46,7 @@ u64 hash_imm(u64 x, u64 offset)
     while ((k = (__builtin_ffsll(working)))) {
         k = k - 1;
         out += hash_imm(k + offset, 0); 
-        working ^= (1<<k);
+        working ^= (1ull<<k);
     }
     return out<<1;
 }
@@ -83,6 +85,13 @@ u64 hash_map(buffer b)
     return result;
 }
 
+buffer allocate_table(int count)
+{
+    int bytes = ((3 * count) / 2) * entry_size * sizeof(value);
+    buffer b = allocate(tag_map, bytes*8);
+    bzero(contents(b), bytes);
+    return b;
+}
 
 // assuming that k and v have both been interned.
 void table_insert(buffer b, value k, value v)
@@ -92,10 +101,12 @@ void table_insert(buffer b, value k, value v)
     for (int i =0; i < b->length/(entry_size*64) ; i++) {
         region += entry_size;
         if ((region[0] == k) || empty_entry(region)){
+            region[0] = k;            
             region[1] = v;
+            return;
         }
     }
-    halt();
+    halt("table overflow");
 }
 
 
@@ -106,10 +117,17 @@ u64 hash(value v)
 {
     if (tagof(v) == tag_map) return hash_map(v);
     if (tagof(v) == tag_large) return hash_ab(v);
+    if (tagof(v) == tag_utf8) return hash_ab(v);    
     if (tagof(v) == tag_small) return hash_imm((u64)v, 0);
-    halt();
+    halt("unknown tag - detag me please");
 }
 
+void out(buffer b)
+{
+    write(1, contents(b), b->length>>3);
+}
+
+// method set in objects?
 value get_small(value v, value k)
 {
     u64 v64 = (u64)v;
@@ -118,15 +136,88 @@ value get_small(value v, value k)
 }
 
 // if this is cached at the buffer level, then when does this get called?
+// do we really need (or even want in the limit) the tag? isn't this just the
+// get an iterate methods?
 u64 get(value v)
 {
     if (tagof(v) == tag_map) return hash_map(v);
     if (tagof(v) == tag_large) return hash_ab(v);
     if (tagof(v) == tag_small) return hash_imm((u64)v, 0);
-    halt();
+    halt("unknown tag");
 }
 
-int main()
+#if 0
+    
+    for (u64 i =0 ;i < 100; i++)
+        printf ("%lld -> %llx %llx\n", i,
+                hash((void *)i),
+                hash_ab(buffer_from_number(i)));
+
+#endif
+
+buffer print_table(value v)
+{
+    buffer b = v; 
+    buffer tags[b->length/64];
+    value *k = contents(b);
+    u64 total = 0, indent = 0;
+    u64 slots = b->length/bitsizeof(u64);
+
+    // (map print (keys v))
+    for (int i = 0; i < slots ; i += 2){
+        value *k = contents(b) + (i*bitsizeof(value));
+        if (!empty_entry(k)) {
+            tags[i] = print(k[0]);
+            u64 klen = tags[i]->length;
+            if (klen > indent) indent = klen;
+            total += klen;
+            tags[i+1] = print(k[1]);
+        } // else slots--;
+    }
+    
+    total += indent * slots + 2 ; // per-line costs, could be less
+    buffer out = allocate(tag_utf8, total);
+    // (apply concat tags)
+    u64 fill = 0;
+    for (int i = 0; i < slots ;i+=2){
+        value *k = contents(b) + (i*bitsizeof(value));
+        if (!empty_entry(k)) {        
+            // insert indent 
+            memcpy(contents(out) + (fill/8), contents(tags[i]), tags[i]->length/8);
+            fill += tags[i]->length;
+            memcpy(contents(out) + (fill/8), contents(tags[i+1]), tags[i+1]->length/8);
+            fill += tags[i+1]->length;
+        }
+    }
+    return out;
+}
+
+buffer format_number(value v, int base)
+{
+    char staging [10];
+    // dervied from tag offset being 32 and the maximum decimal
+    // representation length
+    int fill = 0;
+    u64 x = (u64)v;
+    while (x) {
+        staging[fill++] = (x%base)+'0';
+        x /= base;
+    }
+    buffer b = allocate(tag_utf8, fill * 8);
+    for (; fill > 0 ; fill--) memcpy(contents(b) + fill, staging + fill, 8);
+    return b;
+}
+
+buffer print(value v)
+{
+    if (tagof(v) == tag_map) return print_table(v);
+    if (tagof(v) == tag_utf8) return v;
+    if (tagof(v) == tag_large) halt("unsupported large printf support");
+    if (tagof(v) == tag_small) return format_number(v, 10);
+    halt("bigoo notag\n");
+}
+
+void runtime_init()
 {
     void *h = 0;
     for (u64 i=1; i<tag_max; i++) {
@@ -136,11 +227,6 @@ int main()
                        MAP_ANON, -1, 0);
          printf("%p\n", x);
     }
-    
-    for (u64 i =0 ;i < 100; i++)
-        printf ("%lld -> %llx %llx\n", i,
-                hash((void *)i),
-                hash_ab(buffer_from_number(i)));
 }
 
 

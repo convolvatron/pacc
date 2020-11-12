@@ -1,4 +1,5 @@
 #include <runtime.h>
+#include <stdio.h>
 
 typedef value tuple;
 
@@ -27,22 +28,37 @@ tuple parse_init(buffer b);
 void errorf(tuple f, char *fmt, ...);
 
 boolean is_keyword(tuple tok, string c);
-tuple get_token(buffer b);
+typedef struct lexer *lexer;
+tuple get_token(lexer lex);
 
 tuple parse_init(buffer);
 
 tuple allocate_tuple(tuple parent);
 #define INVALID_ADDRESS ((void *)(-1ull))
 
-#define timm(...) ((tuple)0)
-#define simm(...) ((scope)0)
+static inline value timm_internal(value trash, ...)
+{
+    int total = 0;                              
+    foreach_arg(trash, i) total++;
+    if (total &1) {halt("key without value in timm"); } 
+    buffer t = allocate_table(total/2);
+    value key;
+    foreach_arg(trash, i) {
+        if (total++&1) {
+            table_insert(t, key, i);
+        } else {
+            key = i;
+        }
+    }
+    return t;
+}
 
-string close_paren, open_paren, close_brace, open_brace,
-    close_bracket, open_bracket, less_than, greater_than, semicolon,
-    colon, underscore, quotes, space, comma, percent, quote,
-    backslash, question_mark, newline, asterisk, ampersand, slash,
-    caret, hash, exclamation_point, plus, minus, equals, vertical_bar,
-    tilde, period;
+#define timm(...) timm_internal(0, __VA_ARGS__, INVALID_ADDRESS);
+
 
 tuple make_token(value, string);
+lexer create_lex(buffer b);
 
+#define errorp(p, f, ...)
+
+typedef struct lexer *lexer;

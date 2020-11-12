@@ -1,11 +1,13 @@
 
-OBJ = debug.o scope.o main.o lex.o parse.o runtime.o
+# parse.o toc.o scope.o
+
+OBJ =  main.o lex.o  runtime.o
 
 #clang on free
-pacc: $(OBJ) runtime.h pacc.h
+pacc: $(OBJ) 
 	cc $(OBJ) -g -o pacc
 
-.c.o:
+.c.o: runtime.h pacc.h
 	cc $< -g -c -I. 
 
 clean:

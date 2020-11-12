@@ -2,20 +2,27 @@
 
 #include "pacc.h"
 #include <string.h>
-#define errorp(p, f, ...)
 #include <stdlib.h>
+#include <stdio.h>
 
-typedef struct lexer {
+// a dodge for the moment, we only ever are interested in the first byte
+typedef u8 character; 
+static value tokens;
+
+#define eat(__lex, __bits) ((__lex)->start += (__bits))
+
+struct lexer {
     buffer b;
-    u64 start;     // in bytes
-    character readahead;
+    u64 scan;
+    u64 start;       // for extents
+    tuple state_machine;
     
     char *resizer;
     u32 offset;
     u32 length;
-} *lexer;
+};
 
-static inline u64 digit_of(u8 x)
+static inline u64 digit_of(character x)
 {
     if ((x <= 'f') && (x >= 'a')) return x - 'a' + 10;
     if ((x <= 'F') && (x >= 'A')) return x - 'A' + 10;
@@ -23,23 +30,29 @@ static inline u64 digit_of(u8 x)
     return -1ull;
 }
 
-static inline bits utf8_length(unsigned char x)
+static inline bits utf8_length(character x)
 {
     if (~x & 0x80) return 8;
     if ((x & 0xe0) == 0xc0) return 16;
     if ((x & 0xf0) == 0xe0) return 24;
     if ((x & 0xf8) == 0xf0) return 32;
-    // help
-    return(1);
+    halt("invalid utf8 character");
 }
 
-static inline boolean isdigit(u8 x)
+// bitmap character set?
+static inline boolean iswhitespace(character x)
 {
-    return true;
+    return toboolean((x == ' ') || (x == '\t')|| (x == '\n'));
+}
+
+static inline boolean isdigit(character x, int base)
+{
+    // broken for hex
+    return toboolean((x <= '9') && (x >= '0'));
 }
 
 // ignoring all the other valid alphas...like alpha
-static inline boolean isalpha(u8 x)
+static inline boolean isalpha(character x)
 {
     if ((x <= 'z') && (x >= 'a')) return true;
     if ((x <= 'Z') && (x >= 'A')) return true;
@@ -55,216 +68,138 @@ static inline buffer finalize(lexer lex)
     return b;
 }
 
-// this is always the input
-static inline void move(lexer lex, buffer b, bits len)
+// this is always the input - is it? is it really?
+// ok, break it out if it isn't?
+static inline void move(lexer lex, unsigned char *source, bits length)
 {
-    if (lex->length < lex->offset + len)  {
+    if (lex->length < lex->offset + length)  {
         lex->length *= 2;
-        lex->length += len; // meh
+        lex->length += length; // meh
         lex->resizer = realloc(lex->resizer, lex->length);
     }
-    // move what?
-    lex->offset += len;
+    memcpy(lex->resizer, source, length);
 }
 
-static void insert(lexer lex, buffer b)
+// assuming start fits in a small
+#define make_token(__lex, __kind, __buffer)\
+    ({ \
+        value r = timm(sym(kind), sym(#__kind), sym(start), lex->start, sym(value), __buffer); \
+        buffer b = print(r);\
+        printf("mkt %lld\n", b->length);\
+        lex->start = lex->scan;                                         \
+        r;                                                              \
+    })
+
+static inline character readc(lexer lex)
 {
-    u8 *x = contents(b);
-    // overrun 
-    if ((x[0] & 0xf0) == 0xf0) return move(lex, b, 32);
-    if ((x[0] & 0xe0) == 0xe0) return move(lex, b, 24);        
-    if ((x[0] & 0xc0) == 0xc0) return move(lex, b, 16);                
-    return move(lex, b, 8);                    
-}
-
-
-#define make_token(__lex, __kind, __buffer) false
-
-// why doesn't an ident have a location
-static tuple make_ident(lexer lex)
-{
-    return make_token(lex, identifier, lex->b);
-}
-
-static tuple make_keyword(location f, string id) {
-    return make_token(lex, keyword, lex->b);
-}
-
-// doesn't have to be* a buffer, but lets see...wondering
-// if its harmful to conflate the target runtime with the
-// compiler runtime
-static buffer readc(lexer lex)
-{
-    if (lex->readahead) {
-        character x = lex->readahead;
-        lex->readahead = 0;
-        return x;
-    }
-    return allocate(tag_utf8, utf8_length(lex->resizer[0]));
-}
-
-static boolean next(lexer lex, character expect)
-{
-    return(toboolean(readc(lex)==expect));
+    u8 res = *((u8 *)contents(lex->b)  + (lex->scan>>3));
+    lex->scan += 8;    
+    return res;
 }
 
 // Reads a number literal. Lexer's grammar on numbers is not strict.
 // Integers and floating point numbers and different base numbers are not distinguished.
 static tuple read_number(lexer lex, int base) {
     for (;;) {
+        u64 result = 0;        
         character c = readc(lex);
-        // this actually checks for hex, but oddly is safe in this case
-        if (isdigit(*(u8 *)contents(lex->b))) {
-            move(lex, lex->b, 8);
+        if (isdigit(c, base)) {
+            result = result * base + digit_of(c);
         } else {
-            u64 result = 0;
-            
-            for (int i = 0; i < lex->offset; i ++)  
-                result = result * base + digit_of(*(lex->resizer + i));
-            
-            return timm(kind, sym(number),
-                        value, s,
-                        position, lex->f);
+            return make_token(lex, number, result);
         }
     }
     return 0;
 }
 
-static tuple read_char(lexer lex) {
+// consider removing this from the target language
+// also utf8 character constants?
+static tuple read_character_constant(lexer lex) {
     character c = readc(lex);
     
-    if (c == backslash) {
+    if (c == '\\') {
         character c = readc(lex);
-        if ((c == quote) || (c == quotes) || (c == question_mark) || (c == backslash)) return c;
-        if (c == sym(a)) return symq("\a");
-        if (c == sym(b)) return symq("\b");
-        if (c == sym(f)) return symq("\f");
-        if (c == sym(n)) return symq("\n");
-        if (c == sym(r)) return symq("\r");
-        if (c == sym(t)) return symq("\t");
-        if (c == sym(v)) return symq("\v");
-        if (c == sym(x)) return parse_number(lex, 16);
-        int x = digit_of(*(u8 *)contents(lex->b));
-        if ((x >= 0) && (x <= 7)) return parse_number(lex, 8);
-        errorf(0, "unknown escape character: \\%c", c);
-        // no numbers really - oh, i'm wrong, character immediate
-        append(d, read_escaped_char(lex));
-    } else append(d, c);    
-     return timm("value", aprintf("%c", c));
+        if (!(((c == '\'') || (c == '"') || (c == '?') || (c == '\\')))) {
+            if (c == 'a') c = '\a';
+            if (c == 'b') c = '\b';
+            if (c == 'f') c = '\f';
+            if (c == 'n') c = '\n';
+            if (c == 'r') c = '\r';
+            if (c == 't') c = '\t';
+            if (c == 'v') c = '\v';
+            // xxx - immediate unicode(?) syntax?
+            //   if (c == sym(x)) return parse_number(lex, 16);
+            //   int x = digit_of(*(u8 *)contents(lex->b));
+            //   if ((x >= 0) && (x <= 7)) return parse_number(lex, 8);
+            errorf(0, "unknown escape character: \\%c", c);
+        }
+    }
+    if (readc(lex) != '"') errorf(0, "unterminated character constant");
+    return make_token(lex, value, c); 
 }
 
-static tuple read_string(lexer lex) {
-    buffer d = allocate_buffer();
-    // collect offsets
+static tuple read_string(lexer lex)
+{
     for (;;) {
-        if (size(b) == 0) errorf(0, "unterminated string");
-        symbol c = readc(lex);
-        if (c == quote) break;
- 
+        if (lex->offset == (u64)length(lex->b)) errorf(0, "unterminated string");
+        character c = readc(lex);
+        if (c == '"') break;
     }
-    return make_token(0, d);
+    return make_token(lex, string, 0);
 }
 
 static tuple read_ident(lexer lex) {
-    buffer d = allocate_buffer();
     for (;;) {
-        character c = get(b, 0);
-        if (is_digit(c) || isalpha(c) || (c == underscore)) {
-            move(lex);
+        character c = readc(lex);
+        if (isdigit(c, 10) || isalpha(c) || (c == '_')) {
+            move(lex, contents(lex->b), utf8_length(*(u8 *)contents(lex->b)));
         } else {
-            return make_ident(d);            
+            // consider just keeping a reference to the source rather than
+            // building up a string - just a thought
+            return make_token(lex, identifier, 0);
         }
     }
 }
 
-static tuple read_rep(lexer lex, character expect, symbol t1, symbol els) {
-    return make_keyword( 0, next(lex, expect) ? t1 : els);
-}
-
-static tuple read_rep2(lexer lex,
-                       character expect1, symbol t1,
-                       character expect2, symbol t2,
-                       symbol els) {
-    if (next(b, expect1))
-        return make_keyword( 0, t1);
-    return make_keyword( 0, next(b, expect2) ? t2 : els);
-}
-
 // not the prettiest state machine at the ball
-static token do_read_token(lexer lex)
-{
-    if (b->offset == b->length)
+// static maps would get us a proper one i guess
+tuple get_token(lexer lex) {
+    character c = readc(lex);
+    while (iswhitespace(c)) c = readc(lex);
+    
+    if (lex->offset == lex->b->length)
         return timm(sym(eof), true);
 
-    character c = get(b, 0);
-    if (c == newline) return make_token(lex, newline);
-    if (c == colon) return make_keyword(lex, colon);
-    if (c == octothorpe) return make_keyword(lex, octothorpe);
-    if (c == plus) return read_rep2(b, plus, sym(inc), equals, sym(+), sym(+=));
-    if (c == asterisk) return read_rep(b, equals, sym(*=), sym(*));
-    if (c == equals) return read_rep(b, equals, equals, equals);
-    if (c == exclamation_point) return read_rep(b, equals, sym(!=), exclamation_point);
-    if (c == ampersand) return read_rep2(b, ampersand, ampersand, equals, ampersand, sym(&=));
-    if (c == vertical_bar) return read_rep2(b, vertical_bar, vertical_bar, equals, vertical_bar, sym(|=));
-    if (c == caret) return read_rep(b, equals, caret, caret);
-    if (c == quotes) return read_string(b);
-    if (c == quote) return read_char(b);
-    if (c == slash) return make_keyword( lex, next(b, equals) ? slash : sym(/=));
-
-    if (isalpha(c) || (c == underscore)) return read_ident(b);
-
-    if (is_digit(c)) return read_number(b);
-
-    if ((c == open_paren) || 
-        (c == close_paren) || 
-        (c == comma) || 
-        (c == semicolon) || 
-        (c == open_bracket) || 
-        (c == close_bracket) || 
-        (c == open_brace) || 
-        (c == close_brace) || 
-        (c == question_mark) || 
-        (c == tilde)) {
-        return make_keyword(lex, c);
-    }
-    
-    if (c == minus) {
-        if (next(b, minus)) return make_keyword(lex, sym(decrement));
-        if (next(b, greater_than)) return make_keyword(lex, sym(->));
-        if (next(b, equals)) return make_keyword( lex, sym(-=));
-        return make_keyword( lex, sym(-));
-    }
-
-    if (c==less_than) {
-        if (next(b, less_than)) return read_rep(b, equals, sym(<<=), sym(<<));
-        if (next(b, equals)) return make_keyword( lex, less_than);
-        if (next(b, colon)) return make_keyword( lex, open_brace);
-        if (next(b, percent)) return make_keyword( lex, open_bracket);
-        return make_keyword( lex, less_than);
-    }
-    if (c==greater_than) {    
-        if (next(b, equals)) return make_keyword( lex, sym(>=));
-        if (next(b, greater_than)) return read_rep(b, equals, sym(>>=), sym(>>));
-        return make_keyword( lex, greater_than);
-    }
-    if (c == percent) {
-        return read_rep(b, equals, sym(%=), percent);
-    }
+    // we are eating this
+    //    if (c == newline) return make_token(lex, newline);
+    if (c == '"') return read_string(lex);
+    if (c == '\'') return read_character_constant(lex);
+    if (isalpha(c) || (c == '_')) return read_ident(lex);
+    if (isdigit(c, 10)) return read_number(lex, 10);
     return 0;
 }
 
-tuple get_token(lexer lex) {
-    while (whitespace(readc(lecx)));    
-    return do_read_token(lex);
+void build(lexer lex, ...)
+{
+    char *x;
+    int total = 0; 
+    foreach_arg(lex, i) total++;
+    tokens = allocate_table(total);
+    foreach_arg(lex, i) 
+        table_insert(tokens, stringify(i), true);
 }
-
+    
 lexer create_lex(buffer b)
 {
-    lexer lex = allocate(sizeof(struct lexer));
+    lexer lex = malloc(sizeof(struct lexer)); // malloc?
     lex->length = 64;
     lex->resizer = malloc(lex->length);
     lex->offset = 0;
     lex->b = b;
+
+    build(lex, "*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#", ":", "|", "|=",
+          "(", ")", "[", "]", "{", "}", ";", ",", "?", "~", "--", "->", "-=", "<<", "/", "/=",
+          "<=", "<:", "<%", ">=", ">>", ">", "%", "%=", INVALID_ADDRESS);
     
     return lex;
 }

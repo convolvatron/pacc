@@ -2016,6 +2016,7 @@ tuple parse_init(buffer b) {
     set(get(p->global, sym(types)), sym(void), vt);
     Type v = make_ptr_type(vt);
 
+    // present as a single batch
     make_numeric_type(p->global, sym(boolean), 1, false);
     make_numeric_type(p->global, sym(char), 8, true);
     make_numeric_type(p->global, sym(short), 16, true);

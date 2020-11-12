@@ -258,7 +258,7 @@ static void node2s(buffer b, Node n)
     }
 }
 
-string string_from_token(heap h, tuple tok) {
+string string_from_token(tuple tok) {
     value k = get(tok, sym(kind));
     if  (k == sym(indent)) return get(tok, sym(value));
     if (k == sym(keyword)) return get(tok, sym(id));
