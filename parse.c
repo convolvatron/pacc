@@ -2029,17 +2029,6 @@ tuple parse_init(buffer b) {
     make_numeric_type(p->global, sym(ulong), 64, false);
     make_numeric_type(p->global, sym(ullong), 128, false);
 
-    // just to not drive the formatter insane
-    open_paren = symq("(");
-    close_paren = symq(")");
-    open_brace = symq("{");        
-    close_brace = symq("}");
-    open_bracket = symq("[");
-    close_bracket = symq("]");    
-    comma = symq(",");
-    semicolon = symq(";");
-    colon = symq(":");
-
     value voidptr;
     
     define_builtin(p, sym(__builtin_return_address), v, voidptr);

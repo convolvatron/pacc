@@ -59,15 +59,6 @@ static inline boolean isalpha(character x)
     return false;
 }
 
-
-static inline buffer finalize(lexer lex)
-{
-    buffer b = allocate(tag_utf8, lex->offset);
-    memcpy(contents(b), lex->resizer, lex->offset>>3);
-    lex->offset = 0;
-    return b;
-}
-
 // this is always the input - is it? is it really?
 // ok, break it out if it isn't?
 static inline void move(lexer lex, unsigned char *source, bits length)
@@ -81,13 +72,24 @@ static inline void move(lexer lex, unsigned char *source, bits length)
 }
 
 // assuming start fits in a small
-#define make_token(__lex, __kind, __buffer)\
-    ({ \
-        value r = timm(sym(kind), sym(#__kind), sym(start), lex->start, sym(value), __buffer); \
-        buffer b = print(r);\
-        printf("mkt %lld\n", b->length);\
-        lex->start = lex->scan;                                         \
-        r;                                                              \
+#define make_token_thing(__lex, __kind, __v)     \
+    ({                                          \
+    value r = timm(sym(kind), sym(#__kind),     \
+                   sym(start), lex->start,      \
+                   sym(end), lex->scan,         \
+                   sym(value), __v);       \
+    buffer b = print(r);                        \
+    output(b);                                  \
+    lex->start = lex->scan;                     \
+    r;                                          \
+    })
+
+#define make_token(__lex, __kind)                       \
+    ({                                                  \
+        u64 len =  lex->scan - lex->start;              \
+        buffer b = allocate(tag_utf8, len);             \
+        memcpy(contents(b), lex->resizer, len>>3);      \
+        make_token_thing(__lex, __kind, b);             \
     })
 
 static inline character readc(lexer lex)
@@ -106,7 +108,7 @@ static tuple read_number(lexer lex, int base) {
         if (isdigit(c, base)) {
             result = result * base + digit_of(c);
         } else {
-            return make_token(lex, number, result);
+            return make_token_thing(lex, number, result);
         }
     }
     return 0;
@@ -135,7 +137,7 @@ static tuple read_character_constant(lexer lex) {
         }
     }
     if (readc(lex) != '"') errorf(0, "unterminated character constant");
-    return make_token(lex, value, c); 
+    return make_token_thing(lex, value, c); 
 }
 
 static tuple read_string(lexer lex)
@@ -145,18 +147,18 @@ static tuple read_string(lexer lex)
         character c = readc(lex);
         if (c == '"') break;
     }
-    return make_token(lex, string, 0);
+    return make_token(lex, string);
 }
 
 static tuple read_ident(lexer lex) {
     for (;;) {
         character c = readc(lex);
         if (isdigit(c, 10) || isalpha(c) || (c == '_')) {
-            move(lex, contents(lex->b), utf8_length(*(u8 *)contents(lex->b)));
+            move(lex, (u8 *)contents(lex->b), utf8_length(*(u8 *)contents(lex->b)));
         } else {
             // consider just keeping a reference to the source rather than
             // building up a string - just a thought
-            return make_token(lex, identifier, 0);
+            return make_token(lex, identifier);
         }
     }
 }
@@ -168,9 +170,9 @@ tuple get_token(lexer lex) {
     while (iswhitespace(c)) c = readc(lex);
     
     if (lex->offset == lex->b->length)
-        return timm(sym(eof), true);
+        return timm(sym(kind), sym(eof));
 
-    // we are eating this
+    // we are eating this - i guess cpp wants it
     //    if (c == newline) return make_token(lex, newline);
     if (c == '"') return read_string(lex);
     if (c == '\'') return read_character_constant(lex);

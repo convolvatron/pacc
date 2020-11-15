@@ -1,12 +1,13 @@
-#define varg  __builtin_va_arg
-#define vlist  __builtin_va_list
-#define vstart __builtin_va_start
-#define vend __builtin_va_end
 
 typedef void *value;
 
 #define zero ((void *)0)
 #define one ((void *)1)
+
+#define varg  __builtin_va_arg
+#define vlist  __builtin_va_list
+#define vstart __builtin_va_start
+#define vend __builtin_va_end
 
 #define foreach_arg(__start, _x)                        \
     for (void *_x = 0 ; _x != INVALID_ADDRESS; )                        \
@@ -24,10 +25,9 @@ typedef value boolean;
 #define true one
 #define false zero
 
-
-#define contents(__x) ((void *)&(__x)->contents)
+#define contents(__x) ((void **)&(__x)->contents)
+#define contents64(__x) ((u64 *)&(__x)->contents)
 #define length(__x) ((void *)&(__x)->length)
-
 
 typedef struct buffer {
     u64 length;
@@ -46,33 +46,30 @@ typedef u64 tag;
 #define tag_map 1ull
 #define tag_large 2ull
 #define tag_utf8 3ull
-#define tag_max 4ull
+#define tag_set 4ull
+#define tag_max 5ull
 #define tagof(__x) ((u64)(__x) >> tag_offset)
 
 buffer allocate(tag t, bits length);
 
 buffer allocate_table(int entries);
-    
-#define sym(_x) ({\
-    int len = strlen(#_x);\
-    buffer b = allocate(tag_utf8, len*8);\
-    __builtin_memcpy(contents(b), #_x, len);\
-    b;\
-})
 
-#define symq(_x) false
+u64 hash_bitstring(u8 *x, u64 bytes);
 
+value allocate_utf8(u8 *x, u64 bytes);
 
 // see if its in the object table - is the 2hp hash-o-matic big enough for this?
 static inline value stringify(char *x)
 {
     int total = 0;
     while (x[total++]);
-    buffer b = allocate(tag_utf8, total*8);
-    __builtin_memcpy(contents(b), x, total);
-    return b;
+    return(allocate_utf8((u8 *)x, total-1));
 }
+
+#define sym(_x) stringify(#_x)
 
 void table_insert(buffer t, value k, value v);
 
 buffer print(value);
+void output(buffer b);
+
