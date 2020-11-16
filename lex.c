@@ -151,7 +151,6 @@ static tuple read_string(lexer lex)
 static tuple read_ident(lexer lex) {
     for (;;) {
         character c = readc(lex);
-        printf("ident: %c %p %p\n", c, isdigit(c, 10),  isalpha(c));
         if (isdigit(c, 10) || isalpha(c) || (c == '_')) {
             move(lex, (u8 *)contents(lex->b), utf8_length(*(u8 *)contents(lex->b)));
         } else {
@@ -182,7 +181,7 @@ tuple get_token(lexer lex) {
     // but for now ..
     value k;
     // c is a string! oh no!
-    if ((k = table_get(lex->tokens, c))) {
+    if ((k = table_get(lex->tokens, lexbuffer(lex)))) {
         return make_token_thing(lex, keyword, k);
     }
     halt("token fail");

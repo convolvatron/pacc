@@ -160,6 +160,8 @@ buffer format_number(value v, int base)
     return b;
 }
 
+buffer print_table(value);
+
 buffer print(value v)
 {
     if (tagof(v) == tag_map) return print_table(v);
