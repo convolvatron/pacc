@@ -1,7 +1,7 @@
 
 # parse.o toc.o scope.o
 
-OBJ =  main.o lex.o  runtime.o
+OBJ =  main.o map.o lex.o runtime.o
 
 #clang on free
 pacc: $(OBJ) 

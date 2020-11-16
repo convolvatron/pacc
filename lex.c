@@ -7,19 +7,18 @@
 
 // a dodge for the moment, we only ever are interested in the first byte
 typedef u8 character; 
-static value tokens;
 
-#define eat(__lex, __bits) ((__lex)->start += (__bits))
+#define unread(__lex) ((__lex)->scan -= 8)
 
 struct lexer {
     buffer b;
     u64 scan;
     u64 start;       // for extents
-    tuple state_machine;
+    value tokens; // per-lex, right?
     
-    char *resizer;
-    u32 offset;
-    u32 length;
+    u8 *resizer;
+    bits offset;
+    bits length;
 };
 
 static inline u64 digit_of(character x)
@@ -84,17 +83,15 @@ static inline void move(lexer lex, unsigned char *source, bits length)
     r;                                          \
     })
 
-#define make_token(__lex, __kind)                       \
-    ({                                                  \
-        u64 len =  lex->scan - lex->start;              \
-        buffer b = allocate(tag_utf8, len);             \
-        memcpy(contents(b), lex->resizer, len>>3);      \
-        make_token_thing(__lex, __kind, b);             \
-    })
+
+#define lexbuffer(__lex) allocate_utf8(__lex->resizer + bytesof(__lex->start), bytesof((lex->scan - lex->start)))
+    
+#define make_token(__lex, __kind) make_token_thing(__lex, __kind, lexbuffer(__lex))
+
 
 static inline character readc(lexer lex)
 {
-    u8 res = *((u8 *)contents(lex->b)  + (lex->scan>>3));
+    u8 res = contentsu8(lex->b)[bytesof(lex->scan)];
     lex->scan += 8;    
     return res;
 }
@@ -108,6 +105,7 @@ static tuple read_number(lexer lex, int base) {
         if (isdigit(c, base)) {
             result = result * base + digit_of(c);
         } else {
+            unread(lex);
             return make_token_thing(lex, number, result);
         }
     }
@@ -153,11 +151,13 @@ static tuple read_string(lexer lex)
 static tuple read_ident(lexer lex) {
     for (;;) {
         character c = readc(lex);
+        printf("ident: %c %p %p\n", c, isdigit(c, 10),  isalpha(c));
         if (isdigit(c, 10) || isalpha(c) || (c == '_')) {
             move(lex, (u8 *)contents(lex->b), utf8_length(*(u8 *)contents(lex->b)));
         } else {
             // consider just keeping a reference to the source rather than
             // building up a string - just a thought
+            unread(lex);
             return make_token(lex, identifier);
         }
     }
@@ -168,7 +168,7 @@ static tuple read_ident(lexer lex) {
 tuple get_token(lexer lex) {
     character c = readc(lex);
     while (iswhitespace(c)) c = readc(lex);
-    
+    printf("get token %c\n", c);
     if (lex->offset == lex->b->length)
         return timm(sym(kind), sym(eof));
 
@@ -178,7 +178,14 @@ tuple get_token(lexer lex) {
     if (c == '\'') return read_character_constant(lex);
     if (isalpha(c) || (c == '_')) return read_ident(lex);
     if (isdigit(c, 10)) return read_number(lex, 10);
-    return 0;
+    // double tokens...we gonna scan here...we promised..longest match
+    // but for now ..
+    value k;
+    // c is a string! oh no!
+    if ((k = table_get(lex->tokens, c))) {
+        return make_token_thing(lex, keyword, k);
+    }
+    halt("token fail");
 }
 
 void build(lexer lex, ...)
@@ -186,9 +193,9 @@ void build(lexer lex, ...)
     char *x;
     int total = 0; 
     foreach_arg(lex, i) total++;
-    tokens = allocate_table(total);
+    lex->tokens = allocate_table(total);
     foreach_arg(lex, i) 
-        table_insert(tokens, stringify(i), true);
+        table_insert(lex->tokens, stringify(i), true);
 }
     
 lexer create_lex(buffer b)

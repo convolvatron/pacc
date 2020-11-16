@@ -20,13 +20,19 @@ typedef unsigned char u8;
 typedef struct buffer *buffer;
 typedef buffer string;
 typedef u64 bits;
+typedef u64 bytes;
 typedef value boolean;
 #define toboolean(__x) ((void *)((__x)?true:false))
 #define true one
 #define false zero
 
+#define bitsof(_x) ((_x) << 3)
+#define bytesof(_x) ((_x) >> 3)
+#define bitsizeof(_x) (sizeof(_x)*8)
+
 #define contents(__x) ((void **)&(__x)->contents)
 #define contents64(__x) ((u64 *)&(__x)->contents)
+#define contentsu8(__x) ((u8 *)&(__x)->contents)
 #define length(__x) ((void *)&(__x)->length)
 
 typedef struct buffer {
@@ -58,7 +64,6 @@ u64 hash_bitstring(u8 *x, u64 bytes);
 
 value allocate_utf8(u8 *x, u64 bytes);
 
-// see if its in the object table - is the 2hp hash-o-matic big enough for this?
 static inline value stringify(char *x)
 {
     int total = 0;
@@ -73,3 +78,4 @@ void table_insert(buffer t, value k, value v);
 buffer print(value);
 void output(buffer b);
 
+value table_get(value t, value k);
