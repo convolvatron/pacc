@@ -20,9 +20,9 @@ int main(int argc, char **argv)
     //    parse_init(b);
     value t;
     while ((t=get_token(lex))) {
-        print(t);
+        output(print(t));
         output(stringify("\n\n"));
-        if (get(t, stringify("kind")) == stringify("eof"))
+        if (table_get(t, stringify("kind")) == stringify("eof"))
             exit(0);
     }
 }

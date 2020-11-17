@@ -71,14 +71,13 @@ static inline void move(lexer lex, unsigned char *source, bits length)
 }
 
 // assuming start fits in a small
-#define make_token_thing(__lex, __kind, __v)     \
+#define make_token_thing(__lex, __kind, __v)    \
     ({                                          \
     value r = timm(sym(kind), sym(#__kind),     \
                    sym(start), lex->start,      \
                    sym(end), lex->scan,         \
-                   sym(value), __v);       \
+                   sym(value), __v);            \
     buffer b = print(r);                        \
-    output(b);                                  \
     lex->start = lex->scan;                     \
     r;                                          \
     })
@@ -87,7 +86,7 @@ static inline void move(lexer lex, unsigned char *source, bits length)
 #define lexbuffer(__lex) allocate_utf8(__lex->resizer + bytesof(__lex->start), \
                                        bytesof(lex->offset))
 
-#define sourcebuffer(__lex) allocate_utf8(contentsu8(lex->b)+bytesof(lex->scan), \
+#define sourcebuffer(__lex) allocate_utf8(contentsu8(lex->b)+bytesof(lex->start), \
                                           bytesof((lex->scan - lex->start)))
 
 #define make_token(__lex, __kind) make_token_thing(__lex, __kind, lexbuffer(__lex))
@@ -171,8 +170,7 @@ static tuple read_ident(lexer lex) {
 tuple get_token(lexer lex) {
     character c = readc(lex);
     while (iswhitespace(c)) c = readc(lex);
-    printf("get token %c\n", c);
-    if (lex->offset == lex->b->length)
+    if (lex->start == lex->b->length) 
         return timm(sym(kind), sym(eof));
 
     // we are eating this - i guess cpp wants it
@@ -211,7 +209,5 @@ lexer create_lex(buffer b)
     build(lex, "*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#", ":", "|", "|=",
           "(", ")", "[", "]", "{", "}", ";", ",", "?", "~", "--", "->", "-=", "<<", "/", "/=",
           "<=", "<:", "<%", ">=", ">>", ">", "%", "%=", INVALID_ADDRESS);
-
-    output(print(lex->tokens));
     return lex;
 }

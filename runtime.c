@@ -20,7 +20,7 @@ static boolean buffer_compare(buffer a, u8 *b, u64 length)
 {
     if (a->length != length*8) return false;
     for (int i =0 ; i < length; i++)
-        if (contents64(a)[i] != b[i])
+        if (contentsu8(a)[i] != b[i])
             return false;
     return true;
 }
@@ -29,10 +29,12 @@ value allocate_utf8(u8 *x, u64 bytes)
 {
     value v;
     u64 h = hash_bitstring(x, bitsof(bytes));
+    u64 h0 = h;
 
     // this is a set insertion, if we can right the decomposition here..
     buffer *p;
     // xxx - this is mixing up bytes and values
+    // make a set for god sakes and make a slot macro
     while (*(p = (buffer *)contents(world) + (h%world_length))) {
         // xxx - this isn't correct. structural equality doesn't
         // care about the underlying representation
@@ -45,8 +47,6 @@ value allocate_utf8(u8 *x, u64 bytes)
     b->hash = h;
     __builtin_memcpy(contents(b), x, bytes);
     *p = b;
-    //output(b);
-    //printf (" %p %llx\n", b, h);
     return b;
 }
 
