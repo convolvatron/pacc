@@ -14,7 +14,7 @@ struct lexer {
     buffer b;
     u64 scan;
     u64 start;       // for extents
-    value tokens; // per-lex, right?
+    value tokens; // per-lex, right? sure, but a set please 
     
     u8 *resizer;
     bits offset;
@@ -83,9 +83,13 @@ static inline void move(lexer lex, unsigned char *source, bits length)
     r;                                          \
     })
 
-
-#define lexbuffer(__lex) allocate_utf8(__lex->resizer + bytesof(__lex->start), bytesof((lex->scan - lex->start)))
     
+#define lexbuffer(__lex) allocate_utf8(__lex->resizer + bytesof(__lex->start), \
+                                       bytesof(lex->offset))
+
+#define sourcebuffer(__lex) allocate_utf8(contentsu8(lex->b)+bytesof(lex->scan), \
+                                          bytesof((lex->scan - lex->start)))
+
 #define make_token(__lex, __kind) make_token_thing(__lex, __kind, lexbuffer(__lex))
 
 
@@ -177,13 +181,12 @@ tuple get_token(lexer lex) {
     if (c == '\'') return read_character_constant(lex);
     if (isalpha(c) || (c == '_')) return read_ident(lex);
     if (isdigit(c, 10)) return read_number(lex, 10);
-    // double tokens...we gonna scan here...we promised..longest match
-    // but for now ..
-    value k;
-    // c is a string! oh no!
-    if ((k = table_get(lex->tokens, lexbuffer(lex)))) {
-        return make_token_thing(lex, keyword, k);
-    }
+
+    while (table_get(lex->tokens, sourcebuffer(lex))) lex->scan+=8;
+    lex->scan-=8;
+    if (lex->scan > lex->start) 
+        return make_token_thing(lex, keyword, sourcebuffer(lex));
+    
     halt("token fail");
 }
 
@@ -208,6 +211,7 @@ lexer create_lex(buffer b)
     build(lex, "*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#", ":", "|", "|=",
           "(", ")", "[", "]", "{", "}", ";", ",", "?", "~", "--", "->", "-=", "<<", "/", "/=",
           "<=", "<:", "<%", ">=", ">>", ">", "%", "%=", INVALID_ADDRESS);
-    
+
+    output(print(lex->tokens));
     return lex;
 }

@@ -45,6 +45,8 @@ value allocate_utf8(u8 *x, u64 bytes)
     b->hash = h;
     __builtin_memcpy(contents(b), x, bytes);
     *p = b;
+    //output(b);
+    //printf (" %p %llx\n", b, h);
     return b;
 }
 
@@ -97,7 +99,7 @@ u64 hash_bitstring(u8 *x, u64 bits)
 
     for (int offset = 0; offset < bits ; offset += bitsizeof(u64)) {
         u64 k = ((u64 *)x)[offset>>6];
-        int total = offset - bits;
+        int total = bits - offset;
         if (total < 64) k &= ((1<< total)-1); //endian?
         out ^= hash_imm(k, offset);
     }
@@ -118,7 +120,7 @@ u64 hash(value v)
     if (tagof(v) == tag_map) return hash_map(v);
     if (is_bitstring(v)) {
         buffer b = v;
-        return hash_bitstring((u8 *)contents(b), b->length);
+        return b->hash;
     }
     if (tagof(v) == tag_small) return hash_imm((u64)v, 0);
     halt("unknown tag - detag me please");

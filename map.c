@@ -4,8 +4,8 @@
 extern u64 hash(value);
 
 #define empty_entry(__x) (__x[1] == 0)
-#define table_len(__t)  ((__t)->length/2*bitsizeof(value))
-#define slot(__t, __i)  ((value *)contents(__t) + 2*((h)%table_len(__t)))
+#define table_len(__t)  ((__t)->length/(2*bitsizeof(value)))
+#define slot(__t, __i)  ((value *)contents(__t) + 2*((__i)%table_len(__t)))
 
 #define fort(__i, __t)\
     for (void **__i = contents(__t), **__end = __i+(( __t)->length>>6); __i<__end; __i+=2)
@@ -32,11 +32,12 @@ buffer allocate_table(int count)
 // assuming that k and v have both been interned.
 void table_insert(buffer b, value k, value v)
 {
-    u64 hv = hash(k);
-    fort(region, b) {
-        if ((region[0] == k) || empty_entry(region)){
-            region[0] = k;            
-            region[1] = v;
+    int count = 0; // really shouldn't happen
+    for (u64 hv = hash(k); count < table_len(b) ;hv++) {
+        value *s = slot(b, hv);
+        if ((s[0] == k) || empty_entry(s)){
+            s[0] = k;            
+            s[1] = v;
             return;
         }
     }
@@ -46,12 +47,12 @@ void table_insert(buffer b, value k, value v)
 value table_get(value t, value k)
 {
     buffer b = t;
-    u64 h = b->hash;
+    u64 h = hash(k);
     int tlen = table_len(b);
     int count = 0;
     value *p;
     
-    while ((*(p = slot(b, h)) && (count++ < tlen)))
+    while ((*(p = slot(b, h++)) && (count++ < tlen)))
             if (p[0] == k) return p[1];
     return 0;
 }

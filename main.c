@@ -15,6 +15,7 @@ int main(int argc, char **argv)
 {
     char x[]="int main() {return 5;}";
     runtime_init();
+
     lexer lex = create_lex(allocate_utf8((u8 *)x, sizeof(x)-1));
     //    parse_init(b);
     value t;
