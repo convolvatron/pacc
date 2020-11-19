@@ -1,7 +1,7 @@
 
 # parse.o toc.o scope.o
 
-OBJ =  main.o map.o lex.o runtime.o
+OBJ =  main.o map.o lex.o parse.o runtime.o
 
 #clang on free
 pacc: $(OBJ) 
@@ -9,6 +9,9 @@ pacc: $(OBJ)
 
 .c.o: runtime.h pacc.h
 	cc $< -g -c -I. 
+
+run: pacc
+	./pacc
 
 clean:
 	rm -f *.o pacc *~

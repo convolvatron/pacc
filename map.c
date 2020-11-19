@@ -75,15 +75,16 @@ buffer print_table(value v)
             buffer keyr = print(k[0]);
             buffer valr = print(k[1]);
             
-            u64 klen = keyr->length/8;
+            u64 klen = bytesof(keyr->length);
             if (klen > indent) indent = klen; // runes not bytes!
             
-            total += valr->length/8 + indent + 2;
+            total += bytesof(valr->length) + 2;
             tags[i++] = keyr;
             tags[i++] = valr;            
         }
     }
-    
+    total += indent*(i/2);
+
     // (apply concat tags)
     buffer out = allocate(tag_utf8, total * 8);
     u64 fill = 0;

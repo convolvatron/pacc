@@ -17,13 +17,6 @@ int main(int argc, char **argv)
     runtime_init();
 
     lexer lex = create_lex(allocate_utf8((u8 *)x, sizeof(x)-1));
-    //    parse_init(b);
-    value t;
-    while ((t=get_token(lex))) {
-        output(print(t));
-        output(stringify("\n\n"));
-        if (table_get(t, stringify("kind")) == stringify("eof"))
-            exit(0);
-    }
+    parse_init(lex);
 }
 

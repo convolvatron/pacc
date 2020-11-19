@@ -1,26 +1,20 @@
+
+// goes away
 #include <runtime.h>
 #include <stdio.h>
 
-typedef value tuple;
-
-typedef struct scope *scope;
-typedef tuple location;
-
+// typedef struct scope *scope;
+typedef value location;
+typedef value scope;
 typedef scope Type;
-typedef scope token;
 
-typedef struct parser {
-    token readahead;
-    
-    scope env;
-    scope file;
-    scope global;    
-} *parser;
-
-
+// death to streaming
+typedef struct lexer *lexer;
+typedef struct parser *parser;
+typedef value tuple;
 typedef tuple Node;
 
-tuple parse_init(buffer b);
+value parse_init(lexer lex);
 
 #define error(...)       
 #define errort(tok, ...) 
@@ -31,7 +25,7 @@ boolean is_keyword(tuple tok, string c);
 typedef struct lexer *lexer;
 tuple get_token(lexer lex);
 
-tuple parse_init(buffer);
+value parse_init(lexer lex);
 
 tuple allocate_tuple(tuple parent);
 #define INVALID_ADDRESS ((void *)(-1ull))

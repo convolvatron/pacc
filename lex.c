@@ -14,7 +14,8 @@ struct lexer {
     buffer b;
     u64 scan;
     u64 start;       // for extents
-    value tokens; // per-lex, right? sure, but a set please 
+    value tokens; // per-lex, right? sure, but a set please
+    value backslash_translations;
     
     u8 *resizer;
     bits offset;
@@ -67,30 +68,29 @@ static inline void move(lexer lex, unsigned char *source, bits length)
         lex->length += length; // meh
         lex->resizer = realloc(lex->resizer, lex->length);
     }
-    memcpy(lex->resizer, source, length);
+    __builtin_memcpy(lex->resizer + lex->offset, source, bytesof(length));
+    lex->offset += bytesof(length);
 }
 
 // assuming start fits in a small
-#define make_token_thing(__lex, __kind, __v)    \
+// do we really want to update offset here? i know we're
+// not supposed to care about layering at this scope, but..
+#define make_token(__lex, __kind, __v)    \
     ({                                          \
-    value r = timm(sym(kind), sym(#__kind),     \
+    value r = timm(sym(kind), sym(__kind),     \
                    sym(start), lex->start,      \
                    sym(end), lex->scan,         \
                    sym(value), __v);            \
-    buffer b = print(r);                        \
     lex->start = lex->scan;                     \
+    lex->offset = 0;                           \
     r;                                          \
     })
 
     
-#define lexbuffer(__lex) allocate_utf8(__lex->resizer + bytesof(__lex->start), \
-                                       bytesof(lex->offset))
+#define lexbuffer(__lex) allocate_utf8(__lex->resizer, __lex->offset)
 
 #define sourcebuffer(__lex) allocate_utf8(contentsu8(lex->b)+bytesof(lex->start), \
                                           bytesof((lex->scan - lex->start)))
-
-#define make_token(__lex, __kind) make_token_thing(__lex, __kind, lexbuffer(__lex))
-
 
 static inline character readc(lexer lex)
 {
@@ -101,15 +101,16 @@ static inline character readc(lexer lex)
 
 // Reads a number literal. Lexer's grammar on numbers is not strict.
 // Integers and floating point numbers and different base numbers are not distinguished.
+// assume short
 static tuple read_number(lexer lex, int base) {
+    u64 result = 0;            
     for (;;) {
-        u64 result = 0;        
         character c = readc(lex);
         if (isdigit(c, base)) {
             result = result * base + digit_of(c);
         } else {
             unread(lex);
-            return make_token_thing(lex, number, result);
+            return make_token(lex, number, (value)result);
         }
     }
     return 0;
@@ -138,9 +139,10 @@ static tuple read_character_constant(lexer lex) {
         }
     }
     if (readc(lex) != '"') errorf(0, "unterminated character constant");
-    return make_token_thing(lex, value, c); 
+    return make_token(lex, value, (value)(u64)c); 
 }
 
+// this needs the reassembly buffer and the \ translation
 static tuple read_string(lexer lex)
 {
     for (;;) {
@@ -148,19 +150,16 @@ static tuple read_string(lexer lex)
         character c = readc(lex);
         if (c == '"') break;
     }
-    return make_token(lex, string);
+    return make_token(lex, string, lexbuffer(lex));
 }
 
+// i used to have this running through the resizer buffer
 static tuple read_ident(lexer lex) {
     for (;;) {
         character c = readc(lex);
-        if (isdigit(c, 10) || isalpha(c) || (c == '_')) {
-            move(lex, (u8 *)contents(lex->b), utf8_length(*(u8 *)contents(lex->b)));
-        } else {
-            // consider just keeping a reference to the source rather than
-            // building up a string - just a thought
+        if (!(isdigit(c, 10) || isalpha(c) || (c == '_'))){
             unread(lex);
-            return make_token(lex, identifier);
+            return make_token(lex, identifier, sourcebuffer(lex));
         }
     }
 }
@@ -169,7 +168,10 @@ static tuple read_ident(lexer lex) {
 // static maps would get us a proper one i guess
 tuple get_token(lexer lex) {
     character c = readc(lex);
-    while (iswhitespace(c)) c = readc(lex);
+    while (iswhitespace(c)) { // set operation
+        lex->start+=8;
+        c = readc(lex);
+    }
     if (lex->start == lex->b->length) 
         return timm(sym(kind), sym(eof));
 
@@ -178,16 +180,22 @@ tuple get_token(lexer lex) {
     if (c == '"') return read_string(lex);
     if (c == '\'') return read_character_constant(lex);
     if (isalpha(c) || (c == '_')) return read_ident(lex);
-    if (isdigit(c, 10)) return read_number(lex, 10);
+    if (isdigit(c, 10)) {unread(lex); return read_number(lex, 10);}
 
     while (table_get(lex->tokens, sourcebuffer(lex))) lex->scan+=8;
     lex->scan-=8;
     if (lex->scan > lex->start) 
-        return make_token_thing(lex, keyword, sourcebuffer(lex));
+        return make_token(lex, keyword, sourcebuffer(lex));
     
     halt("token fail");
 }
 
+#define build_backslashes(__lex, ...) build_backslashes_internal(__lex)
+void build_backslashes_internal(lexer lex, ...)
+{
+}
+
+    
 void build(lexer lex, ...)
 {
     char *x;
@@ -206,8 +214,12 @@ lexer create_lex(buffer b)
     lex->offset = 0;
     lex->b = b;
 
-    build(lex, "*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#", ":", "|", "|=",
-          "(", ")", "[", "]", "{", "}", ";", ",", "?", "~", "--", "->", "-=", "<<", "/", "/=",
-          "<=", "<:", "<%", ">=", ">>", ">", "%", "%=", INVALID_ADDRESS);
+    build(lex, "*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#",
+          ":", "|", "|=", "(", ")", "[", "]", "{", "}", ";", ",", "?",
+          "~", "--", "->", "-=", "<<", "/", "/=", "<=", "<:", "<%",
+          ">=", ">>", ">", "%", "%=", INVALID_ADDRESS);
+
+    build_backslashes(lex, a, b, f, n, r, t, v);
+
     return lex;
 }
