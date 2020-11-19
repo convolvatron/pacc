@@ -2,6 +2,8 @@
 #include "pacc.h"
 #include <stdlib.h>
 
+void errorf(void *x, char *fmt, ...);
+
 // mostly for namespace correlation
 struct parser {
     lexer lex;
@@ -11,6 +13,7 @@ struct parser {
     scope global;
 };
 
+// we can tease this out, right?
 enum {
       DECL_BODY = 1,
       DECL_PARAM,
@@ -22,6 +25,12 @@ enum {
 
 #define allocate_scope(...) true
 
+boolean is_keyword(tuple tok, string x)
+{
+    return true;
+}
+
+   
 static value pget_internal(void *trash, ...)
 {
     return 0;
@@ -31,7 +40,7 @@ static value pget_internal(void *trash, ...)
 
 #define value_from_u64(_x) ((value)(u64)(_x))
 
-void errorf(location tuple, char *format, ...)
+void errorf(void *x, char *format, ...)
 {
     halt("parse error");
 }
@@ -485,7 +494,7 @@ static Type read_enum_def(parser p, scope env) {
 static Type read_decl_spec(parser p, scope env, string *rsclass);
 
 static Type read_cast_type(parser p, scope env) {
-    return read_declarator(p, env, NULL, basety, NULL, DECL_CAST);    
+    return read_declarator(p, env, NULL, read_decl_spec(p, env, NULL), NULL, DECL_CAST);    
 }
 
 static Node read_assignment_expr(parser p, scope env);
@@ -1544,7 +1553,7 @@ static void read_decl(parser p, scope env, vector block) {
         // xxx - are all typedefs always global?
         if (sclass == sym(typedef)) {
             Node r = timm("kind", sym(typedef), "type", ty);
-            set(p->global, name, r);
+            // set(p->global, name, r);
         } else if (isstatic && !isglobal) {
             ensure_not_void(ty);
             // why is this syntactically special?
@@ -1797,18 +1806,20 @@ static Node read_switch_stmt(parser p, scope env)
     buffer end = make_label();
     // push_scope(p);
     Node body = read_stmt(p, env);
-    vector v = 0;
+
+        
     Node var = ast_var(env, pget(expr, sym(type)), make_tempname());
     // immutable?
-    push(v, ast_binop(p, pget(expr, sym(type)), sym(=), var, expr));
-    foreach (i, v, pget(env, sym(cases)))
-        push(v, make_switch_jump(p, var, v));
+    //foreach (i, v, pget(env, sym(cases)))
+    //     push(v, make_switch_jump(p, var, v));
+    
     value d = pget(env, sym(defaultcase));
-    push(v, ast_jump(d ?d : end));
-    if (body)
-        push(v, body);
-    push(v, ast_dest(end));
 
+    value v = timm("body", body,
+                   "thing", ast_jump(d ?d : end),
+                   "cond", ast_binop(p, pget(expr, sym(type)), sym(=), var, expr),
+                   "end", ast_dest(end));
+        
     return ast_compound_stmt(v);
 }
 
@@ -1876,7 +1887,7 @@ static Node read_return_stmt(parser p, scope env) {
     return ast_return(NULL);
 }
 
-static Node read_goto_stmt(parser p) {
+static Node read_goto_stmt(parser p, scope env) {
     if (next_token(p, sym(*))) {
         // [GNU] computed goto. "goto *p" jumps to the address pointed by p.
 
@@ -1901,7 +1912,7 @@ static Node read_label(parser p, scope env, tuple tok)
     if (pget(env, sym(labels), label))
         errort(tok, "duplicate label: %s", tok2s(tok));
     Node r = timm("kind", sym(label), "name", label);
-    set(pget(p, sym(labels)), sym(label), r);
+    //    set(pget(p, sym(labels)), sym(label), r);
     return read_label_tail(p, env, r);
 }
 
@@ -1921,7 +1932,7 @@ static Node read_stmt(parser p, scope env) {
         if (id == sym(default)) return read_default_label(p, env,  tok);
         if (id == sym(break))  return read_break_stmt(p, env, tok);
         if (id == sym(continue)) return read_continue_stmt(p, env, tok);
-        if (id == sym(goto))   return read_goto_stmt(p);
+        if (id == sym(goto))   return read_goto_stmt(p, env);
     }
     if ((k == sym(identifier)) && next_token(p, stringify(":")))
         return read_label(p, env, tok);
@@ -1984,7 +1995,7 @@ value parse(lexer lex)
     parser p = malloc(sizeof(struct parser)); // xxx stdlib
     // chained set
     Type vt = timm("kind", sym(void));
-    set(pget(p->global, sym(types)), sym(void), vt);
+    // set(pget(p->global, sym(types)), sym(void), vt);
     Type v = make_ptr_type(vt);
 
     // present as a single batch

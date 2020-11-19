@@ -19,13 +19,13 @@ value parse_init(lexer lex);
 #define error(...)       
 #define errort(tok, ...) 
 
-void errorf(tuple f, char *fmt, ...);
+void errorf(void *x, char *fmt, ...);
 
 boolean is_keyword(tuple tok, string c);
 typedef struct lexer *lexer;
 tuple get_token(lexer lex);
 
-value parse_init(lexer lex);
+value parse(lexer lex);
 
 tuple allocate_tuple(tuple parent);
 #define INVALID_ADDRESS ((void *)(-1ull))
@@ -47,7 +47,7 @@ static inline value timm_internal(value trash, ...)
     return t;
 }
 
-#define timm(...) timm_internal(0, __VA_ARGS__, INVALID_ADDRESS);
+#define timm(...) timm_internal(0, __VA_ARGS__, INVALID_ADDRESS)
 
 
 tuple make_token(value, string);
