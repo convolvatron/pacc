@@ -21,22 +21,24 @@ enum {
       DECL_CAST,
 };
 
-#define NULL ((void *)0)
-
 #define allocate_scope(...) true
+
+// xx  
+#define get table_get
 
 boolean is_keyword(tuple tok, string x)
 {
-    return true;
-}
-
-   
-static value pget_internal(void *trash, ...)
-{
-    return 0;
+    return toboolean((get(tok, sym(kind)) == sym(keyword)) &&
+                     (get(tok, "value") == x));
 }
 
 #define pget(...) pget_internal(0, __VA_ARGS__, INVALID_ADDRESS)
+static value pget_internal(void *e, ...)
+{
+    foreach_arg(e, i) e = get(e, i);
+    return e;
+}
+
 
 #define value_from_u64(_x) ((value)(u64)(_x))
 
@@ -55,14 +57,15 @@ static inline void unget(parser p, value t)
 
 static tuple token(parser p)
 {
+    value v;
     if (p->readahead) {
-        value v = p->readahead;
+        v = p->readahead;
         p->readahead = 0;
-        return v;
+    } else {
+        v = get_token(p->lex);
     }
-
-    // readahead
-    return get_token(p->lex);
+    output(print(v));            
+    return v;
 }
 
 // we care about the ordering, so a map and a vector..
@@ -267,12 +270,12 @@ static void ensure_not_void(Type ty) {
 static void expect(parser p, string id) {
     tuple tok = token(p);
     if (!is_keyword(tok, id))
-        errort(tok, "'%c' expected, but got %s", id, string_from_token(transient, tok));
+        error(p, "'%c' expected, but got", id, tok);
 }
 
 static Type get_typedef(parser p, string name) {
     Node node = pget(p, sym(types), name);
-    return (node && (pget(node, sym(kind)) == sym(typedef))) ? pget(node, sym("type")) : NULL;
+    return (node && (pget(node, sym(kind)) == sym(typedef))) ? pget(node, sym("type")) : zero;
 }
 
 static boolean is_type(parser p, tuple tok)
@@ -293,6 +296,7 @@ static boolean next_token(parser p, string kind) {
     if (is_keyword(tok, kind)){
         return true;
     }
+    unget(p, tok);
     return false;
 }
 
@@ -422,7 +426,7 @@ static Type read_int_suffix(parser p, buffer b){
             return p->type_uint;
         }
     }
-    return NULL;
+    return zero;
 }
 #endif
 static Type read_declarator(parser p, scope env, buffer *rname, Type basety, vector params, int ctx);
@@ -432,7 +436,7 @@ static buffer read_rectype_tag(parser p) {
     if (get(tok, sym(kind)) == sym(identifier)) {
         return get(tok, sym(value));
     }
-    return NULL;
+    return zero;
 }
 
 static int read_intexpr(parser p) {
@@ -441,7 +445,7 @@ static int read_intexpr(parser p) {
 }
 
 static Type read_enum_def(parser p, scope env) {
-    buffer tag = NULL;
+    buffer tag = zero;
     tuple tok = token(p);
 
     // Enum is handled as a synonym for int. We only check if the enum
@@ -453,11 +457,11 @@ static Type read_enum_def(parser p, scope env) {
     if (tag) {
         Type ty = pget(env, sym(tags), tag);
         if (ty && get(ty, sym(kind)) != sym(enum))
-            errort(tok, "declarations of %s does not match", tag);
+            error(p, "declarations of %s does not match", tag);
     }
     if (!is_keyword(tok, stringify("{"))) {
         if (!tag || !pget(env, sym(tags), tag))
-            errort(tok, "enum tag %s is not defined", tag);
+            error(p, "enum tag %s is not defined", tag);
         return pget(p->global, sym(type), sym(int));
     }
     if (tag)
@@ -471,7 +475,7 @@ static Type read_enum_def(parser p, scope env) {
         if (is_keyword(tok, stringify("}")))
             break;
         if (get(tok, sym(kind)) != sym(identifier))
-            errort(tok, "identifier expected, but got %s", tok2s(tok));
+            error(p, "identifier expected, but got %s", tok);
         buffer name = get(tok, sym(value));
 
         if (next_token(p, sym(=)))
@@ -486,7 +490,7 @@ static Type read_enum_def(parser p, scope env) {
             continue;
         if (next_token(p, stringify("}")))
             break;
-        errort(peek(), "',' or '}' expected, but got %s", tok2s(peek()));
+        error(p, "',' or '}' expected, but got", peek())
     }
     return pget(p->global, sym(type), sym(int));
 }
@@ -494,7 +498,7 @@ static Type read_enum_def(parser p, scope env) {
 static Type read_decl_spec(parser p, scope env, string *rsclass);
 
 static Type read_cast_type(parser p, scope env) {
-    return read_declarator(p, env, NULL, read_decl_spec(p, env, NULL), NULL, DECL_CAST);    
+    return read_declarator(p, env, zero, read_decl_spec(p, env, zero), zero, DECL_CAST);    
 }
 
 static Node read_assignment_expr(parser p, scope env);
@@ -542,9 +546,9 @@ static Type read_decl_spec(parser p, scope env, string *rsclass) {
     tuple tok = token(p);
 
     if (!is_type(p, tok))
-        errort(tok, "type name expected, but got %s", tok2s(tok));
+        error(p, "type name expected, but got", tok);
 
-    Type usertype = NULL;
+    Type usertype = zero;
     string kind = 0;
     string sig = 0;
     string size = 0;
@@ -554,7 +558,7 @@ static Type read_decl_spec(parser p, scope env, string *rsclass) {
         tok = token(p);
         value k = pget(tok, sym(kind));
         if (k == sym(eof))
-            error("premature end of input");
+            error(p, "premature end of input");
         if (kind == 0 && k == sym(identifier) && !usertype) {
             Type def = get_typedef(p, pget(tok, sym(value)));
             if (def) {
@@ -644,7 +648,7 @@ static Type read_decl_spec(parser p, scope env, string *rsclass) {
     if (usertype)
         return usertype;
     if (align != -1 && !is_poweroftwo(align))
-        errort(tok, "alignment must be power of 2, but got %d", align);
+        error(p, "alignment must be power of 2, but got %d", tok);
     Type ty;
     // get the canonical copy
     ty = timm("kind", kind, "sig", sig);
@@ -653,7 +657,7 @@ static Type read_decl_spec(parser p, scope env, string *rsclass) {
     //    ty->align = align;
     return ty;
  err:
-    errort(tok, "type mismatch: %s", tok2s(tok));
+    error(p, "type mismatch", tok);
     return 0;
 }
 
@@ -662,14 +666,14 @@ static vector read_rectype_fields_sub(parser p, scope env) {
     for (;;) {
         if (!is_type(p, token(p))) break; //??
 
-        Type basetype = read_decl_spec(p, env, NULL);
+        Type basetype = read_decl_spec(p, env, zero);
         if (pget(basetype, sym(kind)) == sym(struct) && next_token(p, sym(;))) {
             // push(r, timm(type, basetype));
             continue;
         }
         for (;;) {
-            buffer name = NULL;
-            Type fieldtype = read_declarator(p, env, &name, basetype, NULL, DECL_PARAM_TYPEONLY);
+            buffer name = zero;
+            Type fieldtype = read_declarator(p, env, &name, basetype, zero, DECL_PARAM_TYPEONLY);
             ensure_not_void(fieldtype);
             fieldtype = allocate_scope(fieldtype);
             //      if (next_token(p, stringify(":")))
@@ -677,7 +681,7 @@ static vector read_rectype_fields_sub(parser p, scope env) {
             if (next_token(p, stringify(","))) continue;
             if (is_keyword(token(p), stringify("}"))) {
                 // location
-                errorf(p, "missing ';' at the end of field list"); // xx -location
+                error(p, "missing ';' at the end of field list"); // xx -location
             } else
                 expect(p, stringify(";"));
 
@@ -694,7 +698,7 @@ static Type read_rectype_def(parser p, scope env, string kind) {
     if (tag) {
         r = pget(p->global, sym(tags), tag);
         if (r && (pget(r, sym(kind)) == sym(enum) || pget(r, sym(kind)) != kind))
-            error("declarations of %s does not match", tag);
+            error(p, "declarations of %s does not match", tag);
         if (!r) {
             r = timm("kind", kind,
                      "tags", r); // ?
@@ -709,15 +713,15 @@ static Type read_rectype_def(parser p, scope env, string kind) {
 
 static value read_bitsize(parser p, buffer name, Type ty) {
     if (!is_inttype(ty))
-        error("non-integer type cannot be a bitfield: %s", ty2s(ty));
+        error(p, "non-integer type cannot be a bitfield: %s", ty2s(ty));
 
     int r = read_intexpr(p);
     int maxsize = u64_from_value(pget(ty, value_from_u64(sym(kind) == sym(boolean) ? 1 :
                                                          u64_from_value(pget(ty, sym(size))) * 8)));
     if (r < 0 || maxsize < r)
-        errort(tok, "invalid bitfield size for %s: %d", ty2s(ty), r);
-    if (r == 0 && name != NULL)
-        errort(tok, "zero-width bitfield needs to be unnamed: %s", name);
+        error(p, "invalid bitfield size for %s: %d", ty2s(ty), r);
+    if (r == 0 && name != zero)
+        error(p, "zero-width bitfield needs to be unnamed: %s", name);
     return value_from_u64(r);
 }
 
@@ -776,7 +780,7 @@ static vector read_func_args(parser p, scope env,vector params) {
         tuple tok = token(p);
         if (is_keyword(tok, stringify(")"))) break;
         if (!is_keyword(tok, stringify(",")))
-            errort(tok, "unexpected token: '%s'", tok2s(tok));
+            error(p, "unexpected token: '%s'", tok);
     }
     return args;
 }
@@ -807,7 +811,7 @@ static Node read_var_or_func(parser p, scope env, buffer name) {
     if (!v) {
         tuple tok = token(p);
         if (!is_keyword(tok, stringify("(")))
-            errort(tok, "undefined variable: %s", name);
+            error(p, "undefined variable: %s", name);
         Type ty = make_func_type(pget(p->global, sym(type), sym(int)),
                                  0, false);
         // warnt(tok, "assume returning int: %s()", name);
@@ -852,7 +856,7 @@ static Node read_stmt_expr(parser p, scope env) {
 
 static Node read_primary_expr(parser p, scope env) {
     tuple tok = token(p);
-    // if (!tok) return NULL;
+    // if (!tok) return zero;
     value k = pget(tok, sym(kind));
     value v = pget(tok, sym(value));
     if (is_keyword(tok, stringify("("))) {
@@ -862,13 +866,13 @@ static Node read_primary_expr(parser p, scope env) {
         expect(p, stringify(")"));
         return r;
     }
-    if (k == sym(keyword)) return NULL;
+    if (k == sym(keyword)) return zero;
     if (k == sym(identifier)) return read_var_or_func(p, env, v);
     //  if (tok->kind == sym(number))
     //    return read_int(p, tok);
     if (k == sym(char))  return ast_inttype(p, pget(p->global, sym(type), sym(char)), v);
     if (k == sym(string)) return ast_string(p, env, v);
-    error("internal error: unknown token kind: %d", k);
+    error(p, "internal error: unknown token kind: %d", k);
     return 0;
 }
 
@@ -876,7 +880,7 @@ static Node read_primary_expr(parser p, scope env) {
 static Node read_subscript_expr(parser p, scope env, Node node) {
     tuple tok = token(p);
     Node sub = read_expr(p, env);
-    if (!sub) errort(tok, "subscript expected");
+    if (!sub) error(p, "subscript expected");
     expect(p, stringify("]"));
     Node t = binop(p, sym(+), conv(p, node), conv(p, sub));
     return ast_uop(sym(deref), pget(t, sym(type), sym(ptr)), t);
@@ -885,13 +889,13 @@ static Node read_subscript_expr(parser p, scope env, Node node) {
 static Node read_struct_field(parser p, Node struc);
 
 static Node read_postfix_expr_tail(parser p, scope env, Node node) {
-    if (!node) return NULL;
+    if (!node) return zero;
     for (;;) {
         if (next_token(p, stringify("("))) {
             node = conv(p, node);
             Type t = pget(node, sym(type));
             if (pget(node, sym(kind)) != sym(ptr) || pget(t, sym(ptr), sym(kind) != sym(func)))
-                errort(tok, "function expected, but got %s", node2s(node));
+                error(p, "function expected, but got %s", node);
             node = read_funcall(p, env, node);
             continue;
         }
@@ -933,7 +937,7 @@ static Node read_label_addr(parser p, tuple tok) {
     // with unary "&&" operator followed by a label name.
     tuple tok2 = token(p);
     if (pget(tok2, sym(kind)) != sym(identifier))
-        errort(tok, "label name expected after &&, but got %s", tok2s(tok2));
+        error(p, "label name expected after &&, but got %s", tok2);
     Node r = ast_label_addr(p, pget(tok2, sym(value)));
     // push(pget(env, sym(gotos)), r);
     return r;
@@ -953,7 +957,7 @@ static Node read_unary_deref(parser p, scope env, tuple tok) {
     Node operand = conv(p, read_cast_expr(p, env));
     Type ot = pget(operand, sym(type));
     if (pget(ot,sym(kind)) != sym(ptr))
-        errort(tok, "pointer type expected, but got %s", node2s(operand));
+        error(p, "pointer type expected, but got %s", node2s(operand));
     if (pget(ot, sym(ptr), sym(kind)) == sym(func))
         return operand;
     return ast_uop(sym(deref), pget(ot, sym(ptr)), operand);
@@ -970,7 +974,7 @@ static Node read_unary_bitnot(parser p, scope env, tuple tok) {
     expr = conv(p, expr);
     Type et = pget(expr, sym(type));
     if (!is_inttype(et))
-        errort(tok, "invalid use of ~: %s", node2s(expr));
+        error(p, "invalid use of ~: %s", node2s(expr));
     return ast_uop(sym(~), et, expr);
 }
 
@@ -1066,7 +1070,7 @@ static void read_array_initializer(parser p, scope env, vector inits, Type ty, b
         if (is_keyword(tok, stringify("{"))) {
             int idx = read_intexpr(p);
             //      if (idx < 0 || (!flexible && ty->len <= idx))
-            //        errort(tok, "array designator exceeds array bounds: %d", idx);
+            //        error(p, "array designator exceeds array bounds: %d", idx);
             i = idx;
             expect(p, stringify("}"));
             *designated = true;
@@ -1106,10 +1110,10 @@ static void read_struct_initializer(parser p, scope env, vector inits, Type ty, 
         if (is_keyword(tok, sym(.))) {
             tok = token(p);
             if (!tok || pget(tok, sym(kind)) != sym(identifier))
-                errort(tok, "malformed desginated initializer: %s", tok2s(tok));
+                error(p, "malformed desginated initializer: %s", tok);
             fieldtype = lookup_field(ty, pget(tok, sym(value)));
             if (!fieldtype)
-                errort(tok, "field does not exist: %s", tok2s(tok));
+                error(p, "field does not exist: %s", tok);
             designated = true;
         } else {
             fieldtype = lookup_index(ty, i++);
@@ -1309,7 +1313,7 @@ static Node do_read_conditional_expr(parser p, scope env, Node cond) {
     // type is the result of the usual arithmetic conversions.
     if (is_inttype(t) && is_inttype(u)) {
         Type r = usual_arith_conv(p, t, u);
-        return ast_ternary(r, cond, (then ? wrap(r, then) : NULL), wrap(r, els));
+        return ast_ternary(r, cond, (then ? wrap(r, then) : zero), wrap(r, els));
     }
     return ast_ternary(u, cond, then, els);
 }
@@ -1349,10 +1353,10 @@ static Node read_struct_field(parser p, Node struc) {
         error("struct expected, but got %s", node2s(struc));
     tuple name = token(p);
     if (pget(name, sym(kind)) != sym(identifier))
-        error("field name expected, but got %s", tok2s(name));
+        error("field name expected, but got %s", name);
     Type field = lookup_field(ty, pget(name, sym(value)));
     if (!field)
-        error("struct has no such field: %s", tok2s(name));
+        error("struct has no such field: %s", name);
     return ast_struct_ref(field, struc, pget(name, sym(value)));
 }
 
@@ -1375,12 +1379,14 @@ static void read_initializer_elem(parser p, scope env, vector inits, Type ty, bo
 static Type read_func_param(parser p, scope env, buffer *name, boolean optional) {
     string sclass = 0;
     Type basety = pget(p->global, sym(type), sym(int));
+    
     if (is_type(p, token(p))) {
         basety = read_decl_spec(p, env, &sclass);
     } else if (optional) {
-        errort(peek(), "type expected, but got %s", tok2s(peek()));
+        error(p, "type expected, but got", peek());
     }
-    Type ty = read_declarator(p, env, name, basety, NULL, optional ? DECL_PARAM_TYPEONLY : DECL_PARAM);
+
+    Type ty = read_declarator(p, env, name, basety, zero, optional ? DECL_PARAM_TYPEONLY : DECL_PARAM);
 
     // C11 6.7.6.3p7: Array of T is adjusted to pointer to T
     // in a function parameter list.
@@ -1400,7 +1406,7 @@ static void read_declarator_params(parser p, scope env, vector types, vector var
     for (;;) {
         tuple tok = token(p);
         if (next_token(p, sym(...))) {
-            if (!types) errort(tok, "at least one parameter is required before \"...\"");
+            if (!types) error(p, "at least one parameter is required before \"...\"");
             expect(p, stringify(")"));
             *ellipsis = true;
             return;
@@ -1415,7 +1421,7 @@ static void read_declarator_params(parser p, scope env, vector types, vector var
         if (is_keyword(tok, stringify(")")))
             return;
         if (!is_keyword(tok, stringify(",")))
-            errort(tok, "stringify(",") expected, but got %s", tok2s(tok));
+            error(p, "stringify(",") expected, but got %s", tok);
     }
 }
 
@@ -1435,7 +1441,7 @@ static Type read_func_param_list(parser p, scope env, vector paramvars, Type ret
     //  unget_token(tok);
 
     if (next_token(p, sym(...)))
-        errort(tok2, "at least one parameter is required before \"...\"");
+        error(p2, "at least one parameter is required before \"...\"");
     if (is_type(p, token(p))) {
         boolean ellipsis;
         vector paramtypes = zero;
@@ -1443,7 +1449,7 @@ static Type read_func_param_list(parser p, scope env, vector paramvars, Type ret
         return make_func_type(rettype, paramtypes, ellipsis);
     }
     if (!paramvars)
-        errort(tok, "invalid function definition");
+        error(p, "invalid function definition");
     vector paramtypes = zero;
     //  for (int i = 0; i < vector_length(paramvars); i++)
     // push(paramtypes, pget(p->global, sym(type), sym(int)));
@@ -1460,9 +1466,9 @@ static Type read_declarator_array(parser p, scope env, Type basety) {
         len = read_intexpr(p);
         expect(p, stringify("}"));
     }
-    Type t = read_declarator_tail(p, env, basety, NULL);
+    Type t = read_declarator_tail(p, env, basety, zero);
     if (pget(t, sym(kind)) == sym(func))
-        errort(tok, "array of functions");
+        error(p, "array of functions");
     return make_array_type(t, len);
 }
 
@@ -1512,12 +1518,13 @@ static Type read_declarator(parser p, scope env, buffer *rname, Type basety, vec
     tuple tok = token(p);
     if (pget(tok, sym(kind)) == sym(identifier)) {
         if (ctx == DECL_CAST)
-            errort(tok, "identifier is not expected, but got %s", tok2s(tok));
+            error(p, "identifier is not expected, but got", tok);
         *rname = pget(tok, sym(sval));
         return read_declarator_tail(p, env, basety, params);
     }
     if (ctx == DECL_BODY || ctx == DECL_PARAM)
-        errort(tok, "identifier, ( or * are expected, but got %s", tok2s(tok));
+        error(p, "identifier, ( or * are expected, but got", tok);
+    
     //  unget_token(tok);
     return read_declarator_tail(p, env, basety, params);
 }
@@ -1526,7 +1533,7 @@ static void read_static_local_var(parser p, scope env, Type ty, buffer name) {
     // there was some kind of uniquification...mixing up the
     // lexical and storage scopes here
     Node var = ast_var(env, ty, name);
-    vector init = NULL;
+    vector init = zero;
     if (next_token(p, sym(=))) {
         // this had a push scope - new var is bound in initializer?
         init = read_decl_init(p, env, ty);
@@ -1544,8 +1551,8 @@ static void read_decl(parser p, scope env, vector block) {
     if (next_token(p, stringify(";")))
         return;
     for (;;) {
-        buffer name = NULL;
-        Type ty = read_declarator(p, env, &name, basetype, NULL, DECL_BODY); 
+        buffer name = zero;
+        Type ty = read_declarator(p, env, &name, basetype, zero, DECL_BODY); 
         // why do we care ..storage scope
         //        if (sclass == sym(static)) {
         //            set(ty, sym(isstatic), sym(true));
@@ -1564,13 +1571,13 @@ static void read_decl(parser p, scope env, vector block) {
             if (next_token(p, sym(=))) {
                 //push(block, ast_decl(var, read_decl_init(p, env, ty)));
             } else if (sclass != sym(extern) && pget(ty, sym(kind)) != sym(func)) {
-                //push(block, ast_decl(var, NULL));
+                //push(block, ast_decl(var, zero));
             }
         }
         if (next_token(p, stringify(";"))) return;
         
         if (!next_token(p, stringify(":")))
-            errort(peek(), "';' or ',' are expected, but got %s", tok2s(peek()));
+            error(p, "';' or ',' are expected, but got %s", peek());
     }
 }
 
@@ -1681,7 +1688,7 @@ static Node read_if_stmt(parser p, scope env) {
     expect(p, stringify(")"));
     Node then = read_stmt(p, env);
     if (!next_token(p, sym(else)))
-        return ast_if(cond, then, NULL);
+        return ast_if(cond, then, zero);
     Node els = read_stmt(p, env);
     return ast_if(cond, then, els);
 }
@@ -1702,7 +1709,7 @@ static void read_decl_or_stmt(parser p, scope env, vector list) {
 
 static Node read_opt_decl_or_stmt(parser p, scope env) {
     if (next_token(p, stringify(";")))
-        return NULL;
+        return zero;
     vector list = 0;
     read_decl_or_stmt(p, env, list);
     return ast_compound_stmt(list);
@@ -1724,7 +1731,7 @@ static Node read_for_stmt(parser p, scope env) {
     Node body = read_stmt(p, env);
 
     return ast_compound_stmt(timm("init", init,
-                                  "cond", cond?ast_if(cond, NULL, ast_jump(end)):0,
+                                  "cond", cond?ast_if(cond, zero, ast_jump(end)):0,
                                   "step", step,
                                   "begin", ast_jump(beg),
                                   "end", ast_dest(end)));
@@ -1762,7 +1769,7 @@ static Node read_do_stmt(parser p, scope env)
     
     tuple tok = token(p);
     if (!is_keyword(tok, sym(while)))
-        errort(tok, "'while' is expected, but got %s", tok2s(tok));
+        error(p, "'while' is expected, but got %s", tok);
     expect(p, stringify("("));
     Node cond = read_expr(p, env);
     expect(p, stringify(")"));
@@ -1770,7 +1777,7 @@ static Node read_do_stmt(parser p, scope env)
     
     // we can set body to zero and it will...do the right thing!
     return ast_compound_stmt(timm("begin", ast_dest(beg),
-                                  "if", ast_if(cond, ast_jump(beg), NULL),
+                                  "if", ast_if(cond, ast_jump(beg), zero),
                                   "body", body,
                                   "end", ast_dest(end)));
 }
@@ -1790,7 +1797,7 @@ static Node make_switch_jump(parser p, Node var, tuple c) {
         cond = ast_binop(p, int_type, sym(logand), x, y);
     }
     // not really
-    return ast_if(cond, ast_jump(pget(c, sym(name))), NULL);
+    return ast_if(cond, ast_jump(pget(c, sym(name))), zero);
 }
 
 #define foreach(_k, _v, _t)                     \
@@ -1835,14 +1842,14 @@ static Node read_label_tail(parser p, scope env, Node label) {
 // recurse and larvate
 static Node read_case_label(parser p, scope env, tuple tok) {
     vector cases = pget(env, sym(cases));
-    if (!cases) errort(tok, "stray case label");
+    if (!cases) error(p, "stray case label");
     buffer label = make_label();
     int beg = read_intexpr(p);
     if (next_token(p, sym(...))) {
         int end = read_intexpr(p);
         expect(p, stringify(":"));
         if (beg > end)
-            errort(tok, "case region is not in correct order: %d ... %d", beg, end);
+            error(p, "case region is not in correct order: %d ... %d", beg, end);
         // push(cases, make_case(beg, end, label));
     } else {
         expect(p, stringify(":"));
@@ -1856,7 +1863,7 @@ static Node read_case_label(parser p, scope env, tuple tok) {
 static Node read_default_label(parser p, scope env, tuple tok) {
     expect(p, stringify(":"));
     if (pget(p, sym(defaultcase)))
-        errort(tok, "duplicate default");
+        error(p, "duplicate default");
     value lab = make_label();
     return read_label_tail(p,
                            allocate_scope(env, sym(defaultcase), lab), // lifetime
@@ -1867,7 +1874,7 @@ static Node read_break_stmt(parser p, scope env, tuple tok) {
     expect(p, stringify(";"));
     value b;
     if (!(b =pget(env, sym(targets), sym(break))))
-        errort(tok, "stray break statement");
+        error(p, "stray break statement");
     return ast_jump(b);
 }
 
@@ -1875,7 +1882,7 @@ static Node read_continue_stmt(parser p, scope env, tuple tok) {
     expect(p, stringify(";"));
     value lc;
     if (!(lc =pget(env, sym(targets), sym(continue))))
-        errort(tok, "stray continue statement");
+        error(p, "stray continue statement");
     return ast_jump(lc);
 }
 
@@ -1884,7 +1891,7 @@ static Node read_return_stmt(parser p, scope env) {
     expect(p, stringify(";"));
     if (retval)
         return ast_return(ast_conv(pget(env, sym(__return_type)), retval));
-    return ast_return(NULL);
+    return ast_return(zero);
 }
 
 static Node read_goto_stmt(parser p, scope env) {
@@ -1893,12 +1900,12 @@ static Node read_goto_stmt(parser p, scope env) {
 
         Node expr = read_cast_expr(p, env);
         if (pget(expr, sym(type), sym(kind)) != sym(ptr))
-            errort(tok, "pointer expected for computed goto, but got %s", node2s(expr));
+            error(p, "pointer expected for computed goto, but got %s", node2s(expr));
         return ast_computed_goto(expr);
     }
     tuple tok = token(p);
     if (!tok || (pget(tok, sym(kind)) != sym(identifier)))
-        errort(tok, "identifier expected, but got", tok);
+        error(p, "identifier expected, but got", tok);
     expect(p, stringify(";"));
     Node r = ast_goto(pget(tok, sym(value)));
     // why...am I keep track of the gotos? for fixup? - yes
@@ -1910,7 +1917,7 @@ static Node read_label(parser p, scope env, tuple tok)
 {
     buffer label = pget(tok, sym(sval));
     if (pget(env, sym(labels), label))
-        errort(tok, "duplicate label: %s", tok2s(tok));
+        error(p, "duplicate label: %s", tok);
     Node r = timm("kind", sym(label), "name", label);
     //    set(pget(p, sym(labels)), sym(label), r);
     return read_label_tail(p, env, r);
@@ -1958,10 +1965,11 @@ static Node read_compound_stmt(parser p, scope env)
 
 vector read_toplevels(parser p, scope env) {
     vector top = 0;
-    token(p);
     value v;
-    while ((v = pget(token(p), sym(kind))) != sym(eof))
+    while ((pget(v = token(p), sym(kind))) != sym(eof)) {
+        unget(p, v);
         read_decl(p, env, top);
+    }
     return 0;
 }
 
@@ -1993,6 +2001,7 @@ void make_numeric_type(scope s, string name, int length, boolean issigned)
 value parse(lexer lex)
 {
     parser p = malloc(sizeof(struct parser)); // xxx stdlib
+    p->lex = lex;
     // chained set
     Type vt = timm("kind", sym(void));
     // set(pget(p->global, sym(types)), sym(void), vt);

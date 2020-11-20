@@ -7,12 +7,17 @@
 
 value get(value, value);
 
+char *a[]={"int x;",
+           "struct z {int y; int f};",
+           "int main() {return 5;}"};
+
 int main(int argc, char **argv)
 {
-    char x[]="int main() {return 5;}";
     runtime_init();
 
-    lexer lex = create_lex(allocate_utf8((u8 *)x, sizeof(x)-1));
-    parse(lex);
+    for (int i = 0; i < sizeof(a)/sizeof(char *); i++) {
+        lexer lex = create_lex(allocate_utf8((u8 *)a[i], sizeof(a[i])-1));
+        parse(lex);
+    }
 }
 

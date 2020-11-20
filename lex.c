@@ -135,10 +135,10 @@ static tuple read_character_constant(lexer lex) {
             //   if (c == sym(x)) return parse_number(lex, 16);
             //   int x = digit_of(*(u8 *)contents(lex->b));
             //   if ((x >= 0) && (x <= 7)) return parse_number(lex, 8);
-            errorf(0, "unknown escape character: \\%c", c);
+            error(p, "unknown escape character: \\%c", c);
         }
     }
-    if (readc(lex) != '"') errorf(0, "unterminated character constant");
+    if (readc(lex) != '"') error(p, "unterminated character constant", lex);
     return make_token(lex, value, (value)(u64)c); 
 }
 
@@ -146,7 +146,8 @@ static tuple read_character_constant(lexer lex) {
 static tuple read_string(lexer lex)
 {
     for (;;) {
-        if (lex->offset == (u64)length(lex->b)) errorf(0, "unterminated string");
+        // we can keep the opener for just such an event
+        if (lex->offset == (u64)length(lex->b)) error(p, "unterminated string");
         character c = readc(lex);
         if (c == '"') break;
     }
