@@ -2,6 +2,8 @@
 #include "pacc.h"
 #include <stdlib.h>
 
+typedef struct parser *parser;
+
 void errorf(void *x, char *fmt, ...);
 
 // mostly for namespace correlation
@@ -9,6 +11,7 @@ struct parser {
     lexer lex;
     value readahead;
 
+    scope types;
     scope file;
     scope global;
 };
@@ -23,16 +26,13 @@ enum {
 
 #define allocate_scope(...) true
 
-// xx  
-#define get table_get
-
 boolean is_keyword(tuple tok, string x)
 {
     return toboolean((get(tok, sym(kind)) == sym(keyword)) &&
                      (get(tok, "value") == x));
 }
 
-#define pget(...) pget_internal(0, __VA_ARGS__, INVALID_ADDRESS)
+#define pget(__e, ...) pget_internal(__e, __VA_ARGS__, INVALID_ADDRESS)
 static value pget_internal(void *e, ...)
 {
     foreach_arg(e, i) e = get(e, i);
@@ -64,7 +64,6 @@ static tuple token(parser p)
     } else {
         v = get_token(p->lex);
     }
-    output(print(v));            
     return v;
 }
 
@@ -273,21 +272,19 @@ static void expect(parser p, string id) {
         error(p, "'%c' expected, but got", id, tok);
 }
 
-static Type get_typedef(parser p, string name) {
+static Type get_typedef(scope p, string name) {
     Node node = pget(p, sym(types), name);
     return (node && (pget(node, sym(kind)) == sym(typedef))) ? pget(node, sym("type")) : zero;
 }
 
 static boolean is_type(parser p, tuple tok)
 {
+    scope env = p->global; // xxx 
     value k= get(tok, sym(kind));
     value v= get(tok, sym(value));
-    if (k == sym(identifier))
-        return get_typedef(p, v)?true:false;
-    if (k != sym(keyword))
-        return false;
-    // all the standard types were pulled in with redefining op
-    // typespace
+    if (k == sym(identifier))   return get_typedef(env, v)?true:false;
+    // lookup type
+    if (k != sym(keyword))      return false;
     return false;
 }
 
@@ -1458,6 +1455,7 @@ static Type read_func_param_list(parser p, scope env, vector paramvars, Type ret
 
 static Type read_declarator_tail(parser p, scope env, Type basety, vector params);
 
+
 static Type read_declarator_array(parser p, scope env, Type basety) {
     int len;
     if (next_token(p, stringify("]"))) {
@@ -1480,6 +1478,7 @@ static Type read_declarator_func(parser p, scope env, Type basety, vector param)
     return read_func_param_list(p, env, param, basety);
 }
 
+
 static Type read_declarator_tail(parser p, scope env, Type basety, vector params) {
     if (next_token(p, stringify("{")))
         return read_declarator_array(p, env, basety);
@@ -1489,7 +1488,9 @@ static Type read_declarator_tail(parser p, scope env, Type basety, vector params
 }
 
 static void skip_type_qualifiers(parser p) {
-    while (next_token(p, sym(const)) || next_token(p, sym(volatile)) || next_token(p, sym(RESTRICT)));
+    while (next_token(p, sym(const)) ||
+           next_token(p, sym(volatile)) ||
+           next_token(p, sym(RESTRICT)));
 }
 
 // C11 6.7.6: Declarators
@@ -1990,47 +1991,52 @@ static void define_builtin(parser p, buffer name, Type rettype, vector paramtype
     ast_var(p->global, make_func_type(rettype, paramtypes, false), name);
 }
 
-void make_numeric_type(scope s, string name, int length, boolean issigned)
-{
-
-}
+struct numeric {value name; int length; boolean has_sign;};
 
 #define vector(...)
 
+#define slen(__x) (sizeof(__x)/sizeof(*__x))
+
 // just buffer -> graph please
-value parse(lexer lex)
+value parse(buffer b)
 {
     parser p = malloc(sizeof(struct parser)); // xxx stdlib
-    p->lex = lex;
+    p->lex = create_lex(b);
     // chained set
     Type vt = timm("kind", sym(void));
     // set(pget(p->global, sym(types)), sym(void), vt);
     Type v = make_ptr_type(vt);
 
-    // present as a single batch
-    make_numeric_type(p->global, sym(boolean), 1, false);
-    make_numeric_type(p->global, sym(char), 8, true);
-    make_numeric_type(p->global, sym(short), 16, true);
-    make_numeric_type(p->global, sym(int), 32, true);
-    make_numeric_type(p->global, sym(long), 64, true);
-    make_numeric_type(p->global, sym(llong), 128, true);
-    make_numeric_type(p->global, sym(uchar), 8, false);
-    make_numeric_type(p->global, sym(ushort), 16, false);
-    make_numeric_type(p->global, sym(uint), 32, false);
-    make_numeric_type(p->global, sym(ulong), 64, false);
-    make_numeric_type(p->global, sym(ullong), 128, false);
+    struct numeric numtypes[] =  {{sym(boolean), 1, false},
+                                  {sym(char), 8, true},
+                                  {sym(short), 16, true},
+                                  {sym(int), 32, true},
+                                  {sym(long), 64, true},
+                                  {sym(llong), 128, true},
+                                  {sym(uchar), 8, false},
+                                  {sym(ushort), 16, false},
+                                  {sym(uint), 32, false},
+                                  {sym(ulong), 64, false},
+                                  {sym(ullong), 128, false}};
 
+    value types = allocate_table(slen(numtypes));
+    // typedef
+    for (int i = 0; i < slen(numtypes) ; i++) {
+        table_insert(types, numtypes[i].name,
+                     timm(sym(length), numtypes[i].length,
+                          sym(signed), numtypes[i].has_sign));
+    }
+
+    p->global = timm(sym(types), types);
     value voidptr;
 
     define_builtin(p, sym(__builtin_return_address), v, voidptr);
     define_builtin(p, sym(__builtin_reg_class),
-                   pget(p, sym(types), sym(int)),
+                   pget(p->global, sym(types), sym(int)),
                    voidptr);
     // parameter list
     define_builtin(p, sym(__builtin_va_arg), vt, allocate_vector(voidptr, voidptr));
     define_builtin(p, sym(__builtin_va_start), vt, allocate_vector(voidptr));
-    value env; 
-    p->global = env = allocate_scope(0);
-    read_toplevels(p, env);
+    read_toplevels(p, p->global);
     return 0;
 }

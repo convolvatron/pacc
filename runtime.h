@@ -47,13 +47,15 @@ __attribute__((noreturn)) void halt(char *message);
 
 typedef u64 tag;
 
+// we're going to pivot here to a single parameterized get
 #define tag_offset 36ull
 #define tag_small 0ull
 #define tag_map 1ull
 #define tag_large 2ull
 #define tag_utf8 3ull
 #define tag_set 4ull
-#define tag_max 5ull
+#define tag_union 5ull
+#define tag_max 6ull
 #define tagof(__x) ((u64)(__x) >> tag_offset)
 
 buffer allocate(tag t, bits length);
@@ -100,3 +102,22 @@ static inline value timm_internal(value trash, ...)
 }
 
 #define timm(...) timm_internal(0, __VA_ARGS__, INVALID_ADDRESS)
+
+// ^ fort
+#define scan_buffer(__i, __t, __stride, _ty)\
+    for (void *__j = contents(__t), *__end = __j+(( __t)->length>>6); (__i = __j), (__j<__end); __j += __stride/8)
+
+static inline value get(value v, value k)
+{
+    if (v == zero) return zero;
+    if (tagof(v) == tag_map) return table_get(v, k);
+    // union
+    if (tagof(v) == tag_union){
+        value i;
+        scan_buffer(i, (buffer)v, bitsizeof(value), value) {
+            value z = get(*(value*)i, k);
+            if (z) return z;
+        }
+    }
+    halt("bad lookup tag");
+}

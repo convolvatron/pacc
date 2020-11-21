@@ -139,14 +139,6 @@ value get_small(value v, value k)
     return toboolean(k64 & (1<<v64));
 }
 
-// if this is cached at the buffer level, then when does this get called?
-// do we really need (or even want in the limit) the tag? isn't this just the
-// get an iterate methods?
-u64 get(value v)
-{
-    return 0;
-}
-
 // dervied from tag offset being 32 and the maximum decimal
 // representation length...but its not 32!...need a log_base
 buffer format_number(value v, int base)

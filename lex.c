@@ -168,13 +168,14 @@ static tuple read_ident(lexer lex) {
 // not the prettiest state machine at the ball
 // static maps would get us a proper one i guess
 tuple get_token(lexer lex) {
+    if (lex->start == lex->b->length) 
+        return timm(sym(kind), sym(eof));
+    
     character c = readc(lex);
     while (iswhitespace(c)) { // set operation
         lex->start+=8;
         c = readc(lex);
     }
-    if (lex->start == lex->b->length) 
-        return timm(sym(kind), sym(eof));
 
     // we are eating this - i guess cpp wants it
     //    if (c == newline) return make_token(lex, newline);
