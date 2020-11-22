@@ -34,7 +34,7 @@ static Type read_enum_def(parser p, scope env) {
 
         if (next_token(p, sym(=)))
             val = read_intexpr(p);
-        Node constval = ast_inttype(p, pget(p->global, sym(type), sym(int)),
+        Node constval = ast_int_literal(p, pget(p->global, sym(type), sym(int)),
                                     value_from_u64(val));
         // increment val
         // adding to the namespace

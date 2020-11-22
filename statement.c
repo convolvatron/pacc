@@ -1,5 +1,33 @@
 #include <pacc.h>
 
+// should be a node?
+static Node ast_goto(buffer label)
+{
+    return timm("kind", sym(goto), "label", label);
+}
+
+static Node ast_computed_goto(Node expr) {
+    return timm("kind", sym(computed_goto), "operand", expr);
+}
+
+
+
+static Node ast_jump(buffer label)
+{
+    return timm("kind", sym(goto), "label", label);
+}
+
+static Node ast_dest(buffer label) {
+    return timm("kind", sym(label), "name", label);
+}
+
+string make_tempname() {
+    static int c = 0;
+    u8 staging[20];
+    return allocate_utf8(staging, sprintf((char *)staging, ".T%d", c++)); // xx - libc
+}
+
+
 static void read_decl_or_stmt(parser p, scope env, vector list) {
     tuple tok = token(p);
     // mark_location();
@@ -10,6 +38,11 @@ static void read_decl_or_stmt(parser p, scope env, vector list) {
         //   if (stmt)
         //  push(list, stmt);
     }
+}
+
+static Node ast_compound_stmt(vector stmts)
+{
+    return timm("kind", sym(compound_stmt), "statments", stmts);
 }
 
 static Node read_opt_decl_or_stmt(parser p, scope env) {
@@ -36,7 +69,7 @@ static Node read_if_stmt(parser p, scope env) {
     return ast_if(cond, then, els);
 }
 
-static Node read_compound_stmt(parser p, scope env)
+Node read_compound_stmt(parser p, scope env)
 {
     // push_scope(p);
     vector list = 0;
@@ -76,13 +109,14 @@ static Node make_switch_jump(parser p, Node var, tuple c) {
     Type int_type = pget(p->global, sym(type), sym(int)); // ?
     if (pget(c, sym(beg)) == pget(c, sym(end))) {
         Type type_int = pget(p->global, sym(type), sym(int));
-        cond = ast_binop(p, type_int, sym(=), var, ast_inttype(p, int_type,
-                                                               pget(c, sym(begin))));
+        cond = ast_binop(p, type_int, sym(=), var, ast_int_literal(p, int_type,
+                                                                   pget(c, sym(begin))));
         //                                                               value_from_u64(c->beg)));
     } else {
         // [GNU] case i ... j is compiled to if (i <= cond && cond <= j) goto <label>.
-        Node x = ast_binop(p, int_type, sym(>=), ast_inttype(p, int_type, pget(c, sym(beg))), var);
-        Node y = ast_binop(p, int_type, sym(<=), var, ast_inttype(p, int_type, pget(c, sym(end))));
+        // fix lexical pointers
+        Node x = ast_binop(p, int_type, sym(>=), ast_int_literal(p, int_type, pget(c, sym(beg))), var);
+        Node y = ast_binop(p, int_type, sym(<=), var, ast_int_literal(p, int_type, pget(c, sym(end))));
         cond = ast_binop(p, int_type, sym(logand), x, y);
     }
     // not really
@@ -173,6 +207,12 @@ static Node read_continue_stmt(parser p, scope env, tuple tok) {
     if (!(lc =pget(env, sym(targets), sym(continue))))
         error(p, "stray continue statement");
     return ast_jump(lc);
+}
+
+
+static Node ast_return(Node retval)
+{
+    return timm("kind", sym(return), "retval", retval);
 }
 
 static Node read_return_stmt(parser p, scope env) {
@@ -268,7 +308,7 @@ static Node read_while_stmt(parser p, scope env) {
 }
 
 
-static Node read_stmt(parser p, scope env) {
+Node read_stmt(parser p, scope env) {
     tuple tok = token(p);
     value id = pget(tok, sym(id));
     value k = pget(tok, sym(kind));

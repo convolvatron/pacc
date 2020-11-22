@@ -1,12 +1,33 @@
 #include "pacc.h"
 
+
+static Node read_struct_field(parser p, Node struc) {
+    // or union?
+    Type ty = pget(struc, sym(type));
+    if (pget(ty, sym(kind)) != sym(struct))
+        error("struct expected, but got %s", node2s(struc));
+    tuple name = token(p);
+    if (pget(name, sym(kind)) != sym(identifier))
+        error("field name expected, but got %s", name);
+    Type field = lookup_field(ty, pget(name, sym(value)));
+    if (!field)
+        error("struct has no such field: %s", name);
+    
+    return timm("kind", sym(struct_ref),
+                "type", field,
+                "struct", struc,
+                "field", pget(name, sym(value)));
+}
+
+
+
 static Node wrap(Type t, Node node) {
     if (same_arith_type(t, get(node, "type")))
         return node;
     return ast_uop(sym(conv), t, node);
 }
 
-static Node ast_uop(string kind, Type ty, Node operand) {
+static Node ast_unaryop(string kind, Type ty, Node operand) {
     return timm("kind", kind, "type", ty, "operand", operand);
 }
 
@@ -16,10 +37,10 @@ Node conv(parser p, Node node) {
     string kind = get(ty, sym(kind));
     if (kind == sym(array))
         // c11 6.3.2.1p3: an array of t is converted to a pointer to t.
-        return ast_uop(sym(conv), make_ptr_type(get(ty, sym(ptr))), node);
+        return ast_unaryop(sym(conv), make_ptr_type(get(ty, sym(ptr))), node);
     if (kind == sym(func))
         // c11 6.3.2.1p4: a function designator is converted to a pointer to the function.
-        return ast_uop(sym(addr), make_ptr_type(ty), node);
+        return ast_unaryop(sym(addr), make_ptr_type(ty), node);
 
     // generalize
     if ((kind == sym(short)) ||
@@ -64,12 +85,6 @@ static boolean valid_pointer_binop(string op) {
     return false;
 }
 
-
-string make_tempname() {
-    static int c = 0;
-    u8 staging[20];
-    return allocate_utf8(staging, sprintf((char *)staging, ".T%d", c++)); // xx - libc
-}
 
 // from the left and the right? 
 static Node binop(parser p, string op, Node lhs, Node rhs) {
@@ -132,7 +147,7 @@ static Node read_postfix_expr_tail(parser p, scope env, Node node) {
             if (pget(node, sym(type), sym(kind)) != sym(ptr))
                 error("pointer type expected, but got %s %s",
                       ty2s(node->ty), node2s(node));
-            node = ast_uop(sym(deref), pget(node, sym(type), sym(ptr)), node);
+            node = ast_unaryop(sym(deref), pget(node, sym(type), sym(ptr)), node);
             node = read_struct_field(p, node);
             continue;
         }
@@ -140,7 +155,7 @@ static Node read_postfix_expr_tail(parser p, scope env, Node node) {
         if (next_token(p, sym(inc)) || next_token(p, sym(dec))) {
             //            ensure_lvalue(node);
             string op = is_keyword(tok, sym(inc)) ? sym(post_inc) : sym(post_dec);
-            return ast_uop(op, pget(node, sym(type)), node);
+            return ast_unaryop(op, pget(node, sym(type)), node);
         }
         return node;
     }
@@ -156,7 +171,7 @@ static Node read_cast_expr(parser p, scope env) {
             Node node = read_compound_literal(p, env, ty);
             return read_postfix_expr_tail(p, env, node);
         }
-        return ast_uop(sym(cast), ty, read_cast_expr(p, env));
+        return ast_unaryop(sym(cast), ty, read_cast_expr(p, env));
     }
     unget(p, tok);
     return read_unary_expr(p, env);
@@ -320,7 +335,7 @@ Node read_subscript_expr(parser p, scope env, Node node) {
     if (!sub) error(p, "subscript expected");
     expect(p, stringify("]"));
     Node t = binop(p, sym(+), conv(p, node), conv(p, sub));
-    return ast_uop(sym(deref), pget(t, sym(type), sym(ptr)), t);
+    return ast_unaryop(sym(deref), pget(t, sym(type), sym(ptr)), t);
 }
 
 
@@ -339,7 +354,7 @@ static Node read_unary_incdec(parser p, scope env, string op) {
     Node operand = read_unary_expr(p, env);
     operand = conv(p, operand);
     ensure_lvalue(operand);
-    return ast_uop(op, pget(operand, sym(type)), operand);
+    return ast_unaryop(op, pget(operand, sym(type)), operand);
 }
 
 static Node read_label_addr(parser p, tuple tok) {
@@ -348,7 +363,11 @@ static Node read_label_addr(parser p, tuple tok) {
     tuple tok2 = token(p);
     if (pget(tok2, sym(kind)) != sym(identifier))
         error(p, "label name expected after &&, but got %s", tok2);
-    Node r = ast_label_addr(p, pget(tok2, sym(value)));
+    // type void
+    Node r = timm("kind", sym(label_addr), "type",
+                  make_ptr_type(pget(p->global, sym(type), sym(void))),
+                  "name", pget(tok2, sym(value));
+
     // push(pget(env, sym(gotos)), r);
     return r;
 }
@@ -359,8 +378,7 @@ static Node read_unary_addr(parser p, scope env) {
     Node operand = read_cast_expr(p, env);
     if (pget(operand, sym(kind)) == sym(funcdesg))
         return conv(p, operand);
-    ensure_lvalue(operand);
-    return ast_uop(sym(addr), make_ptr_type(pget(operand, sym(type))), operand);
+    return ast_unaryop(sym(addr), make_ptr_type(pget(operand, sym(type))), operand);
 }
 
 static Node read_unary_deref(parser p, scope env, tuple tok) {
@@ -370,12 +388,12 @@ static Node read_unary_deref(parser p, scope env, tuple tok) {
         error(p, "pointer type expected, but got %s", node2s(operand));
     if (pget(ot, sym(ptr), sym(kind)) == sym(func))
         return operand;
-    return ast_uop(sym(deref), pget(ot, sym(ptr)), operand);
+    return ast_unaryop(sym(deref), pget(ot, sym(ptr)), operand);
 }
 
 static Node read_unary_minus(parser p, scope env) {
     Node expr = read_cast_expr(p, env);
-    return binop(p, sym(-), conv(p, ast_inttype(p, pget(expr, sym(type)), 0)), conv(p, expr));
+    return binop(p, sym(-), conv(p, ast_int_literal(p, pget(expr, sym(type)), 0)), conv(p, expr));
 }
 
 static Node read_unary_bitnot(parser p, scope env, tuple tok) {
@@ -384,13 +402,13 @@ static Node read_unary_bitnot(parser p, scope env, tuple tok) {
     Type et = pget(expr, sym(type));
     if (!is_inttype(et))
         error(p, "invalid use of ~: %s", node2s(expr));
-    return ast_uop(sym(~), et, expr);
+    return ast_unaryop(sym(~), et, expr);
 }
 
 static Node read_unary_lognot(parser p, scope env) {
     Node operand = read_cast_expr(p, env);
     operand = conv(p, operand);
-    return ast_uop(sym(!), pget(p->global, sym(type), sym(int)), operand);
+    return ast_unaryop(sym(!), pget(p->global, sym(type), sym(int)), operand);
 }
 
 
@@ -411,6 +429,29 @@ static Node read_stmt_expr(parser p, scope env) {
     return allocate_scope(r, sym(type), rtype);
 }
 
+// fold 
+static Node ast_funcdesg(Type ty, string fname)
+{
+    return timm("kind", sym(funcdesg), "tupe", ty, "fname", fname);
+}
+
+static Node read_var_or_func(parser p, scope env, buffer name) {
+    Node v = pget(env, name);
+    if (!v) {
+        tuple tok = token(p);
+        if (!is_keyword(tok, stringify("(")))
+            error(p, "undefined variable: %s", name);
+        Type ty = make_func_type(pget(p->global, sym(type), sym(int)),
+                                 0, false);
+        // warnt(tok, "assume returning int: %s()", name);
+        return ast_funcdesg(ty, name);
+    }
+    // so..funcdesg is really just a variable of function type?
+    if (pget(v, sym(type), sym(kind)) == sym(func))
+        return ast_funcdesg(pget(v, sym(type)), name);
+    return v;
+}
+
 static Node read_primary_expr(parser p, scope env) {
     tuple tok = token(p);
     // if (!tok) return zero;
@@ -427,7 +468,7 @@ static Node read_primary_expr(parser p, scope env) {
     if (k == sym(identifier)) return read_var_or_func(p, env, v);
     //  if (tok->kind == sym(number))
     //    return read_int(p, tok);
-    if (k == sym(char))  return ast_inttype(p, pget(p->global, sym(type), sym(char)), v);
+    if (k == sym(char))  return ast_int_literal(p, pget(p->global, sym(type), sym(char)), v);
     if (k == sym(string)) return ast_string(p, env, v);
     error(p, "internal error: unknown token kind: %d", k);
     return 0;
@@ -448,7 +489,7 @@ static Node read_sizeof_operand(parser p, scope env) {
     // Sizeof on void or function type is GNU extension
     value size = (tyk == sym(void) || tyk == sym(func)) ?
         value_from_u64(1) : pget(ty, sym(size));
-    return ast_inttype(p, pget(p->global, sym(type), sym(ulong)), size);
+    return ast_int_literal(p, pget(p->global, sym(type), sym(ulong)), size);
 }
 
 // do we really .. want .. alignof?
@@ -456,7 +497,7 @@ static Node read_alignof_operand(parser p, scope env) {
     expect(p, stringify("("));
     Type ty = read_cast_type(p, env);
     expect(p, stringify(")"));
-    return ast_inttype(p, pget(p->global, sym(types), sym(ulong)),
+    return ast_int_literal(p, pget(p->global, sym(types), sym(ulong)),
                        pget(ty, 0));
 }
 

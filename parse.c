@@ -4,15 +4,6 @@
 
 void errorf(void *x, char *fmt, ...);
 
-// mostly for namespace correlation
-struct parser {
-    lexer lex;
-    value readahead;
-
-    scope types; // this is 
-    scope file;
-    scope global;
-};
 
 #define allocate_scope(...) true   
 
@@ -23,22 +14,12 @@ boolean is_keyword(tuple tok, string x)
 }
 
 
-#define value_from_u64(_x) ((value)(u64)(_x))
-
 void errorf(void *x, char *format, ...)
 {
     halt("parse error");
 }
 
-static inline void unget(parser p, value t)
-{
-    if (p->readahead) {
-        halt("parser double push");
-    }
-    p->readahead = t;
-}
-
-static tuple token(parser p)
+tuple token(parser p)
 {
     value v;
     if (p->readahead) {
@@ -65,46 +46,12 @@ Type lookup_index(Type t, int x)
     return 0;
 }
 
-static Node ast_binop(parser p, Type ty, string kind, Node left, Node right) {
-    return timm("kind", kind, "type", ty, "left", left, "right", right);
-}
-
-// not a type - a literal
-static Node ast_inttype(parser p, Type ty, value val) {
-    return timm("kind", sym(literal), "type", ty, "ival", val);
-}
-
 static Node ast_var(scope s, Type ty, string name) {
     return timm("kind", sym(variable), "type", ty, "name", name);
 }
 
-static inline u64 u64_from_value(value v)
-{
-    if (tagof(v) != tag_small) halt("coercing non-number");
-    return (u64)v;
-}
 
 #define get table_get
-
-static Type make_array_type(Type ty, int len) {
-    int size;
-    if (len < 0)
-        size = -1;
-    else
-        size = u64_from_value(get(ty, sym(size))) * len;
-    return timm("kind", sym(array),
-                "ptr", ty,
-                "size", size,
-                "len", len);
-}
-
-// location - doesn't this just come from lexland?..i guess type
-static Node ast_string(parser p, scope env, buffer in)
-{
-    return timm("kind", sym(literal),
-                "type", make_array_type(pget(env, sym(type), sym(char)), in->length),
-                "value", in);
-}
 
 typedef value vector;
 void allocate_vector();
@@ -121,56 +68,8 @@ static Node ast_init(Node val, Type totype) {
                 "totype", totype);
 }
 
-static Node ast_conv(Type totype, Node val) {
-    return timm("kind", sym(conv), "type", totype, "operand", val);
-}
-
-
-static Node ast_return(Node retval)
-{
-    return timm("kind", sym(return), "retval", retval);
-}
-
-static Node ast_compound_stmt(vector stmts)
-{
-    return timm("kind", sym(compound_stmt), "statments", stmts);
-}
-
-static Node ast_struct_ref(Type ty, Node struc, buffer name)
-{
-    return timm("kind", sym(struct_ref), "type", ty, "struct", struc, "field", name);
-}
-
-// should be a node?
-static Node ast_goto(buffer label)
-{
-    return timm("kind", sym(goto), "label", label);
-}
-
-// should be a node?
-static Node ast_jump(buffer label)
-{
-    return timm("kind", sym(goto), "label", label);
-}
-
-static Node ast_computed_goto(Node expr) {
-    return timm("kind", sym(computed_goto), "operand", expr);
-}
-
-static Node ast_dest(buffer label) {
-    return timm("kind", sym(label), "name", label);
-}
-
-
 static Type make_ptr_type(Type ty) {
     return timm("kind", sym(ptr), "ptr", ty);
-}
-
-static Node ast_label_addr(parser p, buffer label) {
-    // type void
-    return timm("kind", sym(label_addr), "type",
-                make_ptr_type(pget(p->global, sym(type), sym(void))),
-                "name", label);
 }
 
 static Type make_func_type(Type rettype, vector paramtypes, boolean has_varargs) {
@@ -180,60 +79,148 @@ static Type make_func_type(Type rettype, vector paramtypes, boolean has_varargs)
                 "hasva", has_varargs);
 }
 
-/*
- * Predicates and kind checking routines
- */
-
-// make a property of the type
-boolean is_inttype(Type ty) {
-    value kind = get(ty, sym(kind));
-    if (kind == sym(boolean) ||
-        kind == sym(char) ||
-        kind == sym(short) ||
-        kind == sym(int) ||
-        kind == sym(long) ||
-        kind == sym(llong))
-        return true;
-    return false;
-}
-
-
-static void ensure_lvalue(Node node) {
-    value kind = get(node, sym(kind));
-    if (kind == sym(variable) ||
-        kind == sym(deref) ||
-        kind == sym(struct_ref))
-        return;
-
-    error("lvalue expected, but got %s", node2s(node));
-}
-
-static void expect(parser p, string id) {
-    tuple tok = token(p);
-    if (!is_keyword(tok, id))
-        error(p, "'%c' expected, but got", id, tok);
-}
-
-static Type get_typedef(scope s, string name) {
-    //    Node node = pget(s, sym(types), name);
-    return pget(s, sym(types), name);
-    //    return (node && (pget(node, sym(kind)) == sym(typedef))) ? pget(node, sym("type")) : zero;
-}
-
-static boolean is_type(parser p, tuple tok)
-{
-    scope env = p->global; // xxx 
-    value k= get(tok, sym(kind));
-    value v= get(tok, sym(value));
-    if (k == sym(identifier))   return get_typedef(env, v)?true:false;
-    // lookup type
-    if (k != sym(keyword))      return false;
-    return false;
-}
 
 static boolean is_string(Type ty) {
     return toboolean((pget(ty, sym(kind)) == sym(array)) &&
                      (pget(ty, sym(ptr), sym(kind)) == sym(char)));
+}
+
+
+
+void assign_string(parser p, vector inits, Type ty, buffer s) {
+}
+#if 0
+if (ty->len == -1)
+    ty->len = ty->size = buffer_length(s);
+int i = 0;
+for (; i < ty->len && *p; i++)
+    push(inits, ast_init(ast_int_listeral(p, p->type_char, *p++), p->type_char, off + i));
+for (; i < ty->len; i++)
+    push(inits, ast_init(ast_int_literal(p, p->type_char, 0), p->type_char, off + i));
+}
+#endif
+
+static void read_initializer_elem(parser p, scope env, vector inits, Type ty, boolean designated);
+
+void read_struct_initializer(parser p, scope env, vector inits, Type ty, boolean designated) {
+    boolean has_brace = toboolean(next_token(p, stringify("{")));
+    int i = 0;
+
+    for (;;) {
+        tuple tok = token(p);
+        if (is_keyword(tok, stringify("}"))) {
+            //      if (!has_brace)
+            //        unget_token(tok);
+            return;
+        }
+
+        Type fieldtype;
+        if ((is_keyword(tok, sym(.)) || is_keyword(tok, stringify("{"))) && !has_brace && !designated) {
+            //      unget_token(tok);
+            return;
+        }
+
+        if (is_keyword(tok, sym(.))) {
+            tok = token(p);
+            if (!tok || pget(tok, sym(kind)) != sym(identifier))
+                error(p, "malformed desginated initializer: %s", tok);
+            fieldtype = lookup_field(ty, pget(tok, sym(value)));
+            if (!fieldtype)
+                error(p, "field does not exist: %s", tok);
+            designated = true;
+        } else {
+            fieldtype = lookup_index(ty, i++);
+        }
+        // off? really?
+        read_initializer_elem(p, env, inits, fieldtype, designated);
+        next_token(p, stringify(","));
+        designated = false;
+        if (pget(ty, sym(kind)) != sym(struct))
+            break;
+    }
+    if (has_brace) expect(p, stringify("}"));
+}
+
+
+
+static int read_intexpr(parser p) {
+    // xxx - we were doing static evaluation here...pass through
+    // take that back, this gets used for array bounds and such
+    return 0;
+}
+
+static void read_array_initializer(parser p, scope env, vector inits, Type ty, boolean *designated) {
+    boolean has_brace = toboolean(next_token(p, stringify("{")));
+    boolean flexible = toboolean(pget(ty, sym(len)) <= 0);
+    value elemsize = pget(ty, sym(ptr), sym(size));
+    int i;
+    
+    for (i = 0; flexible || i < u64_from_value(pget(ty, sym(len))); i++) {
+        tuple tok = token(p);
+        // wrapper functions?
+        if (is_keyword(tok, stringify("}"))) {
+            if (!has_brace) unget(p, tok);
+            return;
+        }
+        
+        if ((is_keyword(tok, sym(.)) || is_keyword(tok, stringify("{"))) && !has_brace && !designated) {
+            unget(p, tok);
+            return;
+        }
+        
+        if (is_keyword(tok, stringify("{"))) {
+            int idx = read_intexpr(p);
+            //      if (idx < 0 || (!flexible && ty->len <= idx))
+            //        error(p, "array designator exceeds array bounds: %d", idx);
+            i = idx;
+            expect(p, stringify("}"));
+            *designated = true;
+        }
+        read_initializer_elem(p, env, inits, pget(ty, sym(ptr)), designated);
+        next_token(p, stringify(","));
+        *designated = false;
+    }
+    if (has_brace) expect(p, stringify("}"));
+    // finish:
+    // is this is a default int thing?
+    //    if (!pget(ty, sym(len))) {
+    //        set(ty, sym(len), value_from_u64(i));
+    //        set(ty, sym(size), value_from_u64(u64_from_value(elemsize) * i));
+    //    }
+}
+
+// fork out struct and array?
+static void read_initializer_list(parser p,
+                                  scope env,
+                                  vector inits,
+                                  Type ty,
+                                  boolean designated) {
+    tuple tok = token(p);
+    value k = pget(tok, sym(kind));
+    value v = pget(tok, sym(value));
+
+    if (is_string(ty)) {
+        if (pget(tok, sym(kind)) == sym(string)) {
+            assign_string(p, inits, ty, v);
+            return;
+        }
+        if (is_keyword(tok, stringify("{")) && (pget(p->global, sym(kind)) == sym(string))) {
+            tok = token(p);
+            assign_string(p, inits, ty, v);
+            expect(p, stringify("}"));
+            return;
+        }
+    }
+    unget(p, tok);
+    string tk = pget(ty, sym(kind));
+    if (tk == sym(array)) {
+        read_array_initializer(p, env, inits, ty, designated);
+    } else if (tk == sym(struct)) {
+        read_struct_initializer(p, env, inits, ty, designated);
+    } else {
+        Type arraytype = make_array_type(ty, 1);
+        read_array_initializer(p, env, inits, arraytype, designated);
+    }
 }
 
 static vector read_decl_init(parser p, scope env, Type ty) {
@@ -283,7 +270,7 @@ static boolean same_arith_type(Type t, Type u) {
 i guess no lul !
 #endif
     
-static Type read_declarator(parser p, scope env, buffer *rname, Type basety, vector params);
+
 
 static buffer read_rectype_tag(parser p) {
     tuple tok = token(p);
@@ -293,21 +280,8 @@ static buffer read_rectype_tag(parser p) {
     return zero;
 }
 
-static int read_intexpr(parser p) {
-    // xxx - we were doing static evaluation here...pass through
-    // take that back, this gets used for array bounds and such
-    return 0;
-}
 
-
-static Type read_decl_spec(parser p, scope env, string *rsclass);
-
-static Type read_cast_type(parser p, scope env) {
-    // DECL_CAST
-    return read_declarator(p, env, zero, read_decl_spec(p, env, zero), zero);
-}
-
-static Node read_assignment_expr(parser p, scope env);
+Node read_assignment_expr(parser p, scope env);
 
 #if 0
 static value read_alignas(parser p) {
@@ -354,9 +328,10 @@ static Type storage_class(parser p)
 }
 #endif
 
+
 static Type read_rectype_def(parser p, scope env, string kind);
 
-static Type read_decl_spec(parser p, scope env, string *rsclass) {
+Type read_decl_spec(parser p, scope env, string *rsclass) {
     value tok = token(p);
     value k = pget(tok, sym(kind));
     
@@ -519,208 +494,11 @@ static Node read_funcall(parser p, scope env, Node fp) {
                 "args", args);
 }
 
-// fold 
-static Node ast_funcdesg(Type ty, string fname)
-{
-    return timm("kind", sym(funcdesg), "tupe", ty, "fname", fname);
-}
-
-static Node read_var_or_func(parser p, scope env, buffer name) {
-    Node v = pget(env, name);
-    if (!v) {
-        tuple tok = token(p);
-        if (!is_keyword(tok, stringify("(")))
-            error(p, "undefined variable: %s", name);
-        Type ty = make_func_type(pget(p->global, sym(type), sym(int)),
-                                 0, false);
-        // warnt(tok, "assume returning int: %s()", name);
-        return ast_funcdesg(ty, name);
-    }
-    // so..funcdesg is really just a variable of function type?
-    if (pget(v, sym(type), sym(kind)) == sym(func))
-        return ast_funcdesg(pget(v, sym(type)), name);
-    return v;
-}
-
 static string get_compound_assign_op(tuple tok) {
     if (pget(tok, sym(kind)) != sym(keyword))
         return 0;
     return(pget(tok, sym(id)));
 }
-
-static Node read_compound_stmt(parser p, scope env);
-
-static value vector_peek(vector v)
-{
-    return zero;
-}
-
-
-
-static Node read_struct_field(parser p, Node struc);
-
-
-
-
-static void assign_string(parser p, vector inits, Type ty, buffer s) {
-}
-#if 0
-if (ty->len == -1)
-    ty->len = ty->size = buffer_length(s);
-int i = 0;
-for (; i < ty->len && *p; i++)
-    push(inits, ast_init(ast_inttype(p, p->type_char, *p++), p->type_char, off + i));
-for (; i < ty->len; i++)
-    push(inits, ast_init(ast_inttype(p, p->type_char, 0), p->type_char, off + i));
-}
-#endif
-
-static void skip_to_brace(parser p, scope env) {
-    for (;;) {
-        if (next_token(p, stringify("}")))
-            return;
-        if (next_token(p, sym(.))) {
-            expect(p, sym(=));
-        }
-        Node ignore = read_assignment_expr(p, env);
-        if (!ignore)
-            return;
-        errorf("excessive initializer", ignore);
-        next_token(p, stringify(","));
-    }
-}
-
-static void read_initializer_elem(parser p, scope env, vector inits, Type ty, boolean designated);
-
-static void read_array_initializer(parser p, scope env, vector inits, Type ty, boolean *designated) {
-    boolean has_brace = toboolean(next_token(p, stringify("{")));
-    boolean flexible = toboolean(pget(ty, sym(len)) <= 0);
-    value elemsize = pget(ty, sym(ptr), sym(size));
-    int i;
-    
-    for (i = 0; flexible || i < u64_from_value(pget(ty, sym(len))); i++) {
-        tuple tok = token(p);
-        // wrapper functions?
-        if (is_keyword(tok, stringify("}"))) {
-            if (!has_brace) unget(p, tok);
-            return;
-        }
-        
-        if ((is_keyword(tok, sym(.)) || is_keyword(tok, stringify("{"))) && !has_brace && !designated) {
-            unget(p, tok);
-            return;
-        }
-        
-        if (is_keyword(tok, stringify("{"))) {
-            int idx = read_intexpr(p);
-            //      if (idx < 0 || (!flexible && ty->len <= idx))
-            //        error(p, "array designator exceeds array bounds: %d", idx);
-            i = idx;
-            expect(p, stringify("}"));
-            *designated = true;
-        }
-        read_initializer_elem(p, env, inits, pget(ty, sym(ptr)), designated);
-        next_token(p, stringify(","));
-        *designated = false;
-    }
-    if (has_brace)
-        skip_to_brace(p, env);
-    // finish:
-    // is this is a default int thing?
-    //    if (!pget(ty, sym(len))) {
-    //        set(ty, sym(len), value_from_u64(i));
-    //        set(ty, sym(size), value_from_u64(u64_from_value(elemsize) * i));
-    //    }
-}
-
-static void read_struct_initializer(parser p, scope env, vector inits, Type ty, boolean designated) {
-    boolean has_brace = toboolean(next_token(p, stringify("{")));
-    int i = 0;
-
-    for (;;) {
-        tuple tok = token(p);
-        if (is_keyword(tok, stringify("}"))) {
-            //      if (!has_brace)
-            //        unget_token(tok);
-            return;
-        }
-
-        Type fieldtype;
-        if ((is_keyword(tok, sym(.)) || is_keyword(tok, stringify("{"))) && !has_brace && !designated) {
-            //      unget_token(tok);
-            return;
-        }
-
-        if (is_keyword(tok, sym(.))) {
-            tok = token(p);
-            if (!tok || pget(tok, sym(kind)) != sym(identifier))
-                error(p, "malformed desginated initializer: %s", tok);
-            fieldtype = lookup_field(ty, pget(tok, sym(value)));
-            if (!fieldtype)
-                error(p, "field does not exist: %s", tok);
-            designated = true;
-        } else {
-            fieldtype = lookup_index(ty, i++);
-        }
-        // off? really?
-        read_initializer_elem(p, env, inits, fieldtype, designated);
-        next_token(p, stringify(","));
-        designated = false;
-        if (pget(ty, sym(kind)) != sym(struct))
-            break;
-    }
-    if (has_brace) skip_to_brace(p, env);
-}
-
-// fork out struct and array?
-static void read_initializer_list(parser p,
-                                  scope env,
-                                  vector inits,
-                                  Type ty,
-                                  boolean designated) {
-    tuple tok = token(p);
-    value k = pget(tok, sym(kind));
-    value v = pget(tok, sym(value));
-
-    if (is_string(ty)) {
-        if (pget(tok, sym(kind)) == sym(string)) {
-            assign_string(p, inits, ty, v);
-            return;
-        }
-        if (is_keyword(tok, stringify("{")) && (pget(p->global, sym(kind)) == sym(string))) {
-            tok = token(p);
-            assign_string(p, inits, ty, v);
-            expect(p, stringify("}"));
-            return;
-        }
-    }
-    unget(p, tok);
-    string tk = pget(ty, sym(kind));
-    if (tk == sym(array)) {
-        read_array_initializer(p, env, inits, ty, designated);
-    } else if (tk == sym(struct)) {
-        read_struct_initializer(p, env, inits, ty, designated);
-    } else {
-        Type arraytype = make_array_type(ty, 1);
-        read_array_initializer(p, env, inits, arraytype, designated);
-    }
-}
-
-
-static Node read_struct_field(parser p, Node struc) {
-    // or union?
-    Type ty = pget(struc, sym(type));
-    if (pget(ty, sym(kind)) != sym(struct))
-        error("struct expected, but got %s", node2s(struc));
-    tuple name = token(p);
-    if (pget(name, sym(kind)) != sym(identifier))
-        error("field name expected, but got %s", name);
-    Type field = lookup_field(ty, pget(name, sym(value)));
-    if (!field)
-        error("struct has no such field: %s", name);
-    return ast_struct_ref(field, struc, pget(name, sym(value)));
-}
-
 
 static void read_initializer_elem(parser p, scope env, vector inits, Type ty, boolean designated) {
     next_token(p, sym(=));
@@ -762,7 +540,7 @@ static Type read_func_param(parser p, scope env, buffer *name, boolean optional)
 }
 
 // Reads an ANSI-style prototyped function parameter list.
-static void read_declarator_params(parser p, scope env, vector types, vector vars, boolean *ellipsis) {
+void read_declarator_params(parser p, scope env, vector types, vector vars, boolean *ellipsis) {
     boolean typeonly = toboolean(!vars);
     *ellipsis = false;
     for (;;) {
@@ -860,7 +638,7 @@ static void skip_type_qualifiers(parser p) {
 #endif
 
 // C11 6.7.6: Declarators
-static Type read_declarator(parser p, scope env, buffer *rname, Type basety, vector params) {
+Type read_declarator(parser p, scope env, buffer *rname, Type basety, vector params) {
     if (next_token(p, stringify("("))) {
         // "(" is either beginning of grouping parentheses or of a function parameter list.
         // If the next token is a type name, a parameter list must follow.
