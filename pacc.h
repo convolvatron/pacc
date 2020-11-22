@@ -24,7 +24,7 @@ typedef struct lexer *lexer;
 typedef struct parser *parser;
 Node conv(parser p, Node node);
 Node read_subscript_expr(parser p, scope env, Node node);
-static Node read_expr(parser p, scope env);
+Node read_expr(parser p, scope env);
 Node conv(parser p, Node node);
 
 
@@ -73,7 +73,7 @@ static Node ast_int_literal(parser p, Type ty, value val) {
 
 
 // make a property of the type
-boolean is_inttype(Type ty) {
+static inline boolean is_inttype(Type ty) {
     value kind = get(ty, sym(kind));
     if (kind == sym(boolean) ||
         kind == sym(char) ||
@@ -155,3 +155,21 @@ static Node ast_conv(Type totype, Node val) {
     return timm("kind", sym(conv), "type", totype, "operand", val);
 }
 
+
+#define allocate_scope(...) true
+
+Node read_assignment_expr(parser p, scope env);
+
+// we care about the ordering, so a map and a vector..
+static inline Type lookup_field(Type t, value s)
+{
+    return 0;
+}
+
+static inline Node ast_var(scope s, Type ty, string name) {
+    return timm("kind", sym(variable), "type", ty, "name", name);
+}
+
+static inline Type make_ptr_type(Type ty) {
+    return timm("kind", sym(ptr), "ptr", ty);
+}

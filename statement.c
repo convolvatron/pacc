@@ -130,7 +130,6 @@ static Node read_switch_stmt(parser p, scope env)
 {
     expect(p, stringify("("));
     Node expr = conv(p, read_expr(p, env));
-    ensure_inttype(expr);
     expect(p, stringify(")"));
 
     buffer end = make_label();

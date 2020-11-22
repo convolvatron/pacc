@@ -19,17 +19,16 @@ static Node read_struct_field(parser p, Node struc) {
                 "field", pget(name, sym(value)));
 }
 
-
+static Node ast_unaryop(string kind, Type ty, Node operand) {
+    return timm("kind", kind, "type", ty, "operand", operand);
+}
 
 static Node wrap(Type t, Node node) {
     if (same_arith_type(t, get(node, "type")))
         return node;
-    return ast_uop(sym(conv), t, node);
+    return ast_unaryop(sym(conv), t, node);
 }
 
-static Node ast_unaryop(string kind, Type ty, Node operand) {
-    return timm("kind", kind, "type", ty, "operand", operand);
-}
 
 Node conv(parser p, Node node) {
     Type int_type = pget(p->global, sym(type), sym(int)); // ?
@@ -122,6 +121,60 @@ static boolean is_poweroftwo(int x) {
     return toboolean((x <= 0) ? 0 : !(x & (x - 1)));
 }
 
+static vector read_func_args(parser p, scope env, vector params) {
+    vector args = 0; // finalize...we can have a larva, write or read, lets not today
+    int i = 0;
+    for (;;) {
+        if (next_token(p, stringify(")"))) break;
+        
+        Node arg = conv(p, read_assignment_expr(p, env));
+        Type ty = pget(arg, sym(type));
+        Type paramtype;
+        
+        // why dont we just unify this later?
+        if (i < vector_length(params)) {
+            paramtype = pget(params, i++);
+        } else {
+            // default types?
+            paramtype =
+                is_inttype(ty) ? pget(p->global, sym(types), sym(int)) :
+                pget(arg, sym(type));
+        }
+        
+        // ensure_assignable(paramtype, ty);
+        if (pget(paramtype, sym(kind)) != pget(arg, sym(type), sym(kind)))
+            arg = ast_conv(paramtype, arg);
+
+        //args = push(args, arg);
+
+        tuple tok = token(p);
+        if (is_keyword(tok, stringify(")"))) break;
+        if (!is_keyword(tok, stringify(",")))
+            error(p, "unexpected token: '%s'", tok);
+    }
+    return args;
+}
+
+
+static Node read_funcall(parser p, scope env, Node fp) {
+    if (pget(fp, sym(kind)) == sym(addr) && pget(fp, sym(operand), sym(kind)) == sym(funcdesg)) {
+        Node desg = pget(fp, sym(operand));
+        vector args = read_func_args(p, env, pget(desg, sym(type), sym(parameters)));
+        //        ast_funcall(Type ftype, buffer fname, vector args)
+        return timm("kind", sym(funcall),
+                    "type", pget(desg, sym(type), sym(rettype)), // rettype
+                    "name", pget(desg, sym(name)),
+                    "args", args,
+                    "ftype", pget(desg, sym(type))); // we need this why?
+    }
+    vector args = read_func_args(p, env, pget(fp, sym(type), sym(ptr), sym(parameters)));
+    // this is not a separate thing    
+    //    ast_funcptr_call(fp, args);
+    return timm("kind", sym(funcptr_call), "type",
+                pget(fp, sym(type), sym(ptr), sym(rettype)),
+                "fptr", fp, 
+                "args", args);
+}
 
 static Node read_postfix_expr_tail(parser p, scope env, Node node) {
     if (!node) return zero;
@@ -307,7 +360,14 @@ static Node read_conditional_expr(parser p, scope env) {
     return do_read_conditional_expr(p, env, cond);
 }
 
-static Node read_assignment_expr(parser p, scope env) {
+static string get_compound_assign_op(tuple tok) {
+    if (pget(tok, sym(kind)) != sym(keyword))
+        return 0;
+    return(pget(tok, sym(id)));
+}
+
+
+Node read_assignment_expr(parser p, scope env) {
     Node node = read_logor_expr(p, env);
     tuple tok = token(p);
     if (!tok) return node;
@@ -316,8 +376,6 @@ static Node read_assignment_expr(parser p, scope env) {
     string cop = get_compound_assign_op(tok);
     if (is_keyword(tok, sym(=)) || cop) {
         Node value = conv(p, read_assignment_expr(p, env));
-        if (is_keyword(tok, sym(=)) || cop)
-            ensure_lvalue(node);
         Node right = cop ? binop(p, cop, conv(p, node), value) : value;
         Type ty = pget(node, sym(type));
         if (is_inttype(ty) && pget(ty, sym(kind)) != pget(right, sym(ty), sym(kind)))
@@ -340,7 +398,7 @@ Node read_subscript_expr(parser p, scope env, Node node) {
 
 
 // was read comma_expr
-static Node read_expr(parser p, scope env) {
+Node read_expr(parser p, scope env) {
     Node node = read_assignment_expr(p, env);
     while (next_token(p, stringify(","))){
         Node expr = read_assignment_expr(p, env);
@@ -353,7 +411,6 @@ static Node read_expr(parser p, scope env) {
 static Node read_unary_incdec(parser p, scope env, string op) {
     Node operand = read_unary_expr(p, env);
     operand = conv(p, operand);
-    ensure_lvalue(operand);
     return ast_unaryop(op, pget(operand, sym(type)), operand);
 }
 
@@ -366,8 +423,8 @@ static Node read_label_addr(parser p, tuple tok) {
     // type void
     Node r = timm("kind", sym(label_addr), "type",
                   make_ptr_type(pget(p->global, sym(type), sym(void))),
-                  "name", pget(tok2, sym(value));
-
+                  "name", pget(tok2, sym(value)));
+    
     // push(pget(env, sym(gotos)), r);
     return r;
 }
@@ -521,5 +578,4 @@ static Node read_unary_expr(parser p, scope env) {
     unget(p, tok);
     return read_postfix_expr_tail(p, env, read_primary_expr(p, env));
 }
-
 

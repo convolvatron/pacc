@@ -5,8 +5,6 @@
 void errorf(void *x, char *fmt, ...);
 
 
-#define allocate_scope(...) true   
-
 boolean is_keyword(tuple tok, string x)
 {
     return toboolean((get(tok, sym(kind)) == sym(keyword)) &&
@@ -35,21 +33,10 @@ tuple token(parser p)
     return v;
 }
 
-// we care about the ordering, so a map and a vector..
-Type lookup_field(Type t, value s)
-{
-    return 0;
-}
-
 Type lookup_index(Type t, int x)
 {
     return 0;
 }
-
-static Node ast_var(scope s, Type ty, string name) {
-    return timm("kind", sym(variable), "type", ty, "name", name);
-}
-
 
 #define get table_get
 
@@ -68,9 +55,6 @@ static Node ast_init(Node val, Type totype) {
                 "totype", totype);
 }
 
-static Type make_ptr_type(Type ty) {
-    return timm("kind", sym(ptr), "ptr", ty);
-}
 
 static Type make_func_type(Type rettype, vector paramtypes, boolean has_varargs) {
     return timm("kind", sym(func),
@@ -143,7 +127,7 @@ void read_struct_initializer(parser p, scope env, vector inits, Type ty, boolean
 
 
 
-static int read_intexpr(parser p) {
+int read_intexpr(parser p) {
     // xxx - we were doing static evaluation here...pass through
     // take that back, this gets used for array bounds and such
     return 0;
@@ -280,8 +264,6 @@ static buffer read_rectype_tag(parser p) {
     return zero;
 }
 
-
-Node read_assignment_expr(parser p, scope env);
 
 #if 0
 static value read_alignas(parser p) {
@@ -437,68 +419,6 @@ static value read_bitsize(parser p, buffer name, Type ty) {
 Node read_unary_expr(parser p, scope env);
 
 #define vector_length(_x) 1
-
-static Node read_assignment_expr(parser p, scope env);
-
-static vector read_func_args(parser p, scope env, vector params) {
-    vector args = 0; // finalize...we can have a larva, write or read, lets not today
-    int i = 0;
-    for (;;) {
-        if (next_token(p, stringify(")"))) break;
-        
-        Node arg = conv(p, read_assignment_expr(p, env));
-        Type ty = pget(arg, sym(type));
-        Type paramtype;
-        
-        // why dont we just unify this later?
-        if (i < vector_length(params)) {
-            paramtype = pget(params, i++);
-        } else {
-            // default types?
-            paramtype =
-                is_inttype(ty) ? pget(p->global, sym(types), sym(int)) :
-                pget(arg, sym(type));
-        }
-        
-        // ensure_assignable(paramtype, ty);
-        if (pget(paramtype, sym(kind)) != pget(arg, sym(type), sym(kind)))
-            arg = ast_conv(paramtype, arg);
-
-        //args = push(args, arg);
-
-        tuple tok = token(p);
-        if (is_keyword(tok, stringify(")"))) break;
-        if (!is_keyword(tok, stringify(",")))
-            error(p, "unexpected token: '%s'", tok);
-    }
-    return args;
-}
-
-static Node read_funcall(parser p, scope env, Node fp) {
-    if (pget(fp, sym(kind)) == sym(addr) && pget(fp, sym(operand), sym(kind)) == sym(funcdesg)) {
-        Node desg = pget(fp, sym(operand));
-        vector args = read_func_args(p, env, pget(desg, sym(type), sym(parameters)));
-        //        ast_funcall(Type ftype, buffer fname, vector args)
-        return timm("kind", sym(funcall),
-                    "type", pget(desg, sym(type), sym(rettype)), // rettype
-                    "name", pget(desg, sym(name)),
-                    "args", args,
-                    "ftype", pget(desg, sym(type))); // we need this why?
-    }
-    vector args = read_func_args(p, env, pget(fp, sym(type), sym(ptr), sym(parameters)));
-    // this is not a separate thing    
-    //    ast_funcptr_call(fp, args);
-    return timm("kind", sym(funcptr_call), "type",
-                pget(fp, sym(type), sym(ptr), sym(rettype)),
-                "fptr", fp, 
-                "args", args);
-}
-
-static string get_compound_assign_op(tuple tok) {
-    if (pget(tok, sym(kind)) != sym(keyword))
-        return 0;
-    return(pget(tok, sym(id)));
-}
 
 static void read_initializer_elem(parser p, scope env, vector inits, Type ty, boolean designated) {
     next_token(p, sym(=));
