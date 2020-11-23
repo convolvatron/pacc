@@ -173,3 +173,28 @@ static inline Node ast_var(scope s, Type ty, string name) {
 static inline Type make_ptr_type(Type ty) {
     return timm("kind", sym(ptr), "ptr", ty);
 }
+
+static inline Type make_func_type(Type rettype, vector paramtypes, boolean has_varargs) {
+    return timm("kind", sym(func),
+                "rettype", rettype,
+                "params", paramtypes,
+                "hasva", has_varargs);
+}
+
+
+
+static inline boolean is_string(Type ty) {
+    return toboolean((pget(ty, sym(kind)) == sym(array)) &&
+                     (pget(ty, sym(ptr), sym(kind)) == sym(char)));
+}
+
+int read_intexpr(parser p);
+
+Node read_cast_expr(parser p, scope env);
+
+void read_initializer_list(parser p,
+                           scope env,
+                           vector inits,
+                           Type ty,
+                           boolean designated);
+

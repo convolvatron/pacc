@@ -23,6 +23,10 @@ static Node ast_unaryop(string kind, Type ty, Node operand) {
     return timm("kind", kind, "type", ty, "operand", operand);
 }
 
+static boolean same_arith_type(Type t, Type u) {
+    return toboolean(get(t, sym(kind)) == get(u, sym(kind)) && get(t, sym(usig)) == get(u, sym(usig)));
+}
+
 static Node wrap(Type t, Node node) {
     if (same_arith_type(t, get(node, "type")))
         return node;
@@ -122,28 +126,29 @@ static boolean is_poweroftwo(int x) {
 }
 
 static vector read_func_args(parser p, scope env, vector params) {
-    vector args = 0; // finalize...we can have a larva, write or read, lets not today
+    vector args = 0; // larvate?
     int i = 0;
     for (;;) {
         if (next_token(p, stringify(")"))) break;
         
         Node arg = conv(p, read_assignment_expr(p, env));
         Type ty = pget(arg, sym(type));
+
+#if 0        
         Type paramtype;
-        
         // why dont we just unify this later?
-        if (i < vector_length(params)) {
-            paramtype = pget(params, i++);
-        } else {
+        if (!(paramtype = pget(params, i++))) {
             // default types?
             paramtype =
                 is_inttype(ty) ? pget(p->global, sym(types), sym(int)) :
                 pget(arg, sym(type));
         }
+#endif
         
         // ensure_assignable(paramtype, ty);
-        if (pget(paramtype, sym(kind)) != pget(arg, sym(type), sym(kind)))
-            arg = ast_conv(paramtype, arg);
+        // maybe later 
+        //        if (pget(paramtype, sym(kind)) != pget(arg, sym(type), sym(kind)))
+        //            arg = ast_conv(paramtype, arg);
 
         //args = push(args, arg);
 
@@ -213,9 +218,33 @@ static Node read_postfix_expr_tail(parser p, scope env, Node node) {
         return node;
     }
 }
+
 static Node read_unary_expr(parser p, scope env) ;
 
-static Node read_cast_expr(parser p, scope env) {
+
+static vector read_decl_init(parser p, scope env, Type ty) {
+    vector r = 0;
+    if (is_keyword(token(p), stringify("{")) || is_string(ty)) {
+        read_initializer_list(p, env, r, ty, false);
+    } else {
+        Node init = conv(p, read_assignment_expr(p, env));
+        if (is_inttype(pget(init, sym(type))) && pget(init, sym(type), sym(kind)) != pget(ty, sym(kind)))
+            init = ast_conv(ty, init);
+        // push(r, ast_init(init, ty));
+    }
+    return r;
+}
+
+static Node read_compound_literal(parser p, scope env, Type ty) {
+    buffer name = make_label();
+    vector init = read_decl_init(p, env, ty);
+    Node r = ast_var(env, ty, name);
+    // set(r, sym(init), init);
+    return r;
+}
+
+
+Node read_cast_expr(parser p, scope env) {
     tuple tok = token(p);
     if (is_keyword(tok, stringify("(")) && is_type(p, token(p))) {
         Type ty = read_cast_type(p, env);
@@ -428,8 +457,6 @@ static Node read_label_addr(parser p, tuple tok) {
     // push(pget(env, sym(gotos)), r);
     return r;
 }
-
-static Node read_cast_expr(parser p, scope env);
 
 static Node read_unary_addr(parser p, scope env) {
     Node operand = read_cast_expr(p, env);

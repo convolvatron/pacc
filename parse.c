@@ -56,21 +56,6 @@ static Node ast_init(Node val, Type totype) {
 }
 
 
-static Type make_func_type(Type rettype, vector paramtypes, boolean has_varargs) {
-    return timm("kind", sym(func),
-                "rettype", rettype,
-                "params", paramtypes,
-                "hasva", has_varargs);
-}
-
-
-static boolean is_string(Type ty) {
-    return toboolean((pget(ty, sym(kind)) == sym(array)) &&
-                     (pget(ty, sym(ptr), sym(kind)) == sym(char)));
-}
-
-
-
 void assign_string(parser p, vector inits, Type ty, buffer s) {
 }
 #if 0
@@ -174,7 +159,7 @@ static void read_array_initializer(parser p, scope env, vector inits, Type ty, b
 }
 
 // fork out struct and array?
-static void read_initializer_list(parser p,
+void read_initializer_list(parser p,
                                   scope env,
                                   vector inits,
                                   Type ty,
@@ -207,27 +192,6 @@ static void read_initializer_list(parser p,
     }
 }
 
-static vector read_decl_init(parser p, scope env, Type ty) {
-    vector r = 0;
-    if (is_keyword(token(p), stringify("{")) || is_string(ty)) {
-        read_initializer_list(p, env, r, ty, false);
-    } else {
-        Node init = conv(p, read_assignment_expr(p, env));
-        if (is_inttype(pget(init, sym(type))) && pget(init, sym(type), sym(kind)) != pget(ty, sym(kind)))
-            init = ast_conv(ty, init);
-        // push(r, ast_init(init, ty));
-    }
-    return r;
-}
-
-static Node read_compound_literal(parser p, scope env, Type ty) {
-    buffer name = make_label();
-    vector init = read_decl_init(p, env, ty);
-    Node r = ast_var(env, ty, name);
-    // set(r, sym(init), init);
-    return r;
-}
-
 
 boolean next_token(parser p, string kind) {
     tuple tok = token(p);
@@ -238,9 +202,6 @@ boolean next_token(parser p, string kind) {
     return false;
 }
 
-static boolean same_arith_type(Type t, Type u) {
-    return toboolean(get(t, sym(kind)) == get(u, sym(kind)) && get(t, sym(usig)) == get(u, sym(usig)));
-}
 
 #if 0
 // xxx little state machines - use the set trick
