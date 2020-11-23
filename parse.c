@@ -516,17 +516,15 @@ Type read_declarator(parser p, scope env, buffer *rname, Type basety, vector par
         // where is this being denoted?
         return read_declarator(p, env, rname, make_ptr_type(basety), params);
     }
-#if 0    
     tuple tok = token(p);
     if (pget(tok, sym(kind)) == sym(identifier)) {
-        if (ctx == DECL_CAST)
-            error(p, "identifier is not expected, but got", tok);
+        //        if (ctx == DECL_CAST)
+        //            error(p, "identifier is not expected, but got", tok);
         *rname = pget(tok, sym(sval));
         return read_declarator_tail(p, env, basety, params);
     }
-    if (ctx == DECL_BODY || ctx == DECL_PARAM)
-        error(p, "identifier, ( or * are expected, but got", tok);
-#endif    
+    //if (ctx == DECL_BODY || ctx == DECL_PARAM)
+    //    error(p, "identifier, ( or * are expected, but got", tok);
     //  unget_token(tok);
     return read_declarator_tail(p, env, basety, params);
 }
@@ -539,35 +537,33 @@ void read_decl(parser p, scope env, vector block) {
     Type basetype = read_decl_spec(p, env, &sclass);
     if (next_token(p, stringify(";")))
         return;
-    for (;;) {
-        buffer name = zero;
-        // , DECL_BODY); 
-        Type ty = read_declarator(p, env, &name, basetype, zero);
-        // why do we care ..storage scope
-        //        if (sclass == sym(static)) {
-        //            set(ty, sym(isstatic), sym(true));
-        //        }
 
-        // there waws some special handling to assign a global for static locals
-        
-        // xxx - are all typedefs always global?
-        
-        if (sclass == sym(typedef)) {
-            Node r = timm("kind", sym(typedef), "type", ty);
-            // set(p->global, name, r);
-        } else {
-            Node var = ast_var((isglobal ? p->global : env), ty, name);
-            if (next_token(p, sym(=))) {
-                //push(block, ast_decl(var, read_decl_init(p, env, ty)));
-            } else if (sclass != sym(extern) && pget(ty, sym(kind)) != sym(func)) {
-                //push(block, ast_decl(var, zero));
-            }
+    buffer name = zero;
+    // , DECL_BODY); 
+    Type ty = read_declarator(p, env, &name, basetype, zero);
+    // why do we care ..storage scope
+    //        if (sclass == sym(static)) {
+    //            set(ty, sym(isstatic), sym(true));
+    //        }
+    
+    // there was some special handling to assign a global for static locals
+    
+    if (sclass == sym(typedef)) {
+        Node r = timm("kind", sym(typedef), "type", ty);
+        // no - typedefs are scoped
+        // set(p->global, name, r);
+    } else {
+        Node var = ast_var((isglobal ? p->global : env), ty, name);
+        if (next_token(p, sym(=))) {
+            //push(block, ast_decl(var, read_decl_init(p, env, ty)));
+        } else if (sclass != sym(extern) && pget(ty, sym(kind)) != sym(func)) {
+            //push(block, ast_decl(var, zero));
         }
-        if (next_token(p, stringify(";"))) return;
-        
-        if (!next_token(p, stringify(":")))
-            error(p, "';' or ',' are expected, but got %s", peek());
     }
+    if (next_token(p, stringify(";"))) return;
+    
+    if (!next_token(p, stringify(":")))
+        error(p, "';' or ',' are expected, but got %s", peek());
 }
 
 static Node read_func_body(parser p, scope env, Type functype, buffer fname, vector params) {

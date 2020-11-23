@@ -43,7 +43,13 @@ typedef struct buffer {
 
 void runtime_init();
 
-__attribute__((noreturn)) void halt(char *message);
+#include <stdio.h>
+
+//deprintify
+__attribute__((noreturn)) void halt_internal(char *message, ...);
+#define halt(...) {\
+    printf("halt in [%s:%s:%d]\n", __FILE__, __FUNCTION__, __LINE__); \
+    halt_internal(__VA_ARGS__, INVALID_ADDRESS);}
 
 typedef u64 tag;
 

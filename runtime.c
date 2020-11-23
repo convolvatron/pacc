@@ -50,7 +50,7 @@ value allocate_utf8(u8 *x, u64 bytes)
     return b;
 }
 
-__attribute__((noreturn)) void halt(char *x)
+__attribute__((noreturn)) void halt_internal(char *x, ...)
 {
     write(1, x, strlen(x));
     exit(-1);

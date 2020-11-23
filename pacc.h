@@ -62,7 +62,7 @@ struct parser {
 static inline void unget(parser p, value t)
 {
     if (p->readahead) {
-        halt("parser double push");
+        halt("parser double unread");
     }
     p->readahead = t;
 }
