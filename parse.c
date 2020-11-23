@@ -17,22 +17,6 @@ void errorf(void *x, char *format, ...)
     halt("parse error");
 }
 
-tuple token(parser p)
-{
-    value v;
-    if (p->readahead) {
-        v = p->readahead;
-        p->readahead = 0;
-    } else {
-        v = get_token(p->lex);
-        // this is supposed to be a catchall, but wondering if some non-deterministic
-        // check might stumble on this
-        if (pget(v, sym(kind)) == sym(eof)) 
-            error(p, "premature end of input");        
-    }
-    return v;
-}
-
 Type lookup_index(Type t, int x)
 {
     return 0;
@@ -193,16 +177,6 @@ void read_initializer_list(parser p,
 }
 
 
-boolean next_token(parser p, string kind) {
-    tuple tok = token(p);
-    if (is_keyword(tok, kind)){
-        return true;
-    }
-    unget(p, tok);
-    return false;
-}
-
-
 #if 0
 // xxx little state machines - use the set trick
 "u", "u32",
@@ -283,7 +257,7 @@ Type read_decl_spec(parser p, scope env, string *rsclass) {
         if (def) return def;
     }
     
-    value id = pget(token, sym(id));
+    value id = pget(tok, sym(id));
     
     if ((id == sym(struct)) || (id == sym(union)))
         return read_rectype_def(p, env, id); 

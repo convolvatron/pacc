@@ -36,7 +36,7 @@ static value pget_internal(void *e, ...)
 }
 
 value token(parser);
-boolean next_token(parser p, string kind);
+
 string make_label();
 void read_decl(parser p, scope env, vector block);
 Type read_declarator(parser p, scope env, buffer *rname, Type basety, vector params);
@@ -83,12 +83,6 @@ static inline boolean is_inttype(Type ty) {
         kind == sym(llong))
         return true;
     return false;
-}
-
-static inline void expect(parser p, string id) {
-    tuple tok = token(p);
-    if (!is_keyword(tok, id))
-        error(p, "'%c' expected, but got", id, tok);
 }
 
 
@@ -197,4 +191,40 @@ void read_initializer_list(parser p,
                            vector inits,
                            Type ty,
                            boolean designated);
+
+
+
+//static inline boolean next_token(parser p, string kind) {
+// this is supposed to be a catchall, but wondering if some non-deterministic
+// check might stumble on this
+
+// these are macros so I get some traceability
+
+#define token(__p)\
+    ({value v;\
+    if (__p->readahead) {\
+        v = __p->readahead;\
+        __p->readahead = 0;\
+    } else {\
+        v = get_token(__p->lex);\
+        if (pget(v, sym(kind)) == sym(eof)) error(__p, "premature end of input");\
+    }                                       \
+    printf("[%s:%d]", __FUNCTION__, __LINE__);\
+    output(print(pget(v, sym(value))));       \
+    printf("\n\n");\
+    v;})
+
+#define next_token(__p, __kind) ({\
+    tuple tok = token(p);\
+    value res = false;\
+    if (is_keyword(tok, __kind)){\
+        res = tok;\
+    } else unget(p, tok);\
+    res;})
+
+static inline void expect(parser p, string id) {
+    tuple tok = token(p);
+    if (!is_keyword(tok, id))
+        error(p, "'%c' expected, but got", id, tok);
+}
 
