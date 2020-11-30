@@ -32,7 +32,8 @@ static void read_decl_or_stmt(parser p, scope env, vector list) {
     tuple tok = token(p);
     // mark_location();
     if (is_type(p, tok)) {
-        read_decl(p, env, list);
+        // off
+        read_decl(p, env, list, 0);
     } else {
         Node stmt = read_stmt(p, env);
         //   if (stmt)

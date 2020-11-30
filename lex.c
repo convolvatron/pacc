@@ -1,25 +1,35 @@
-// Copyright 2012 Rui Ueyama. Released under the MIT license.
-
+// according to the immutable worlds model we should probably do utf8 as a seperate
+// pass and let the compiler worry about interleaving/scheduling the evalution
 #include "pacc.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-// a dodge for the moment, we only ever are interested in the first byte
-typedef u8 character; 
+typedef u32 character; 
 
-#define unread(__lex) ((__lex)->scan -= 8)
 
-struct lexer {
-    buffer b;
-    u64 scan;
-    u64 start;       // for extents
-    value tokens; // per-lex, right? sure, but a set please
-    value backslash_translations;
-    
+static inline buffer substring(void *base, bits start, bits end)
+{
+    return allocate_utf8(base+(start>>3), end-start);
+}
+
+
+typedef struct elastic { //ahem
     u8 *resizer;
     bits offset;
     bits length;
+} *elastic;
+
+// should go 
+struct lexer {
+    buffer b;
+
+    value tokens; // per-lex, right? sure, but a set please
+    value whitespace; // per-lex, right? sure, but a set please    
+    value backslash_translations;
+    
+    elastic r;
+    elastic out;
 };
 
 static inline u64 digit_of(character x)
@@ -39,12 +49,6 @@ static inline bits utf8_length(character x)
     halt("invalid utf8 character");
 }
 
-// bitmap character set?
-static inline boolean iswhitespace(character x)
-{
-    return toboolean((x == ' ') || (x == '\t')|| (x == '\n'));
-}
-
 static inline boolean isdigit(character x, int base)
 {
     // broken for hex
@@ -59,70 +63,77 @@ static inline boolean isalpha(character x)
     return false;
 }
 
-// this is always the input - is it? is it really?
-// ok, break it out if it isn't?
-static inline void move(lexer lex, unsigned char *source, bits length)
+
+static inline void push_mut(elastic e, unsigned char *source, bits length)
 {
-    if (lex->length < lex->offset + length)  {
-        lex->length *= 2;
-        lex->length += length; // meh
-        lex->resizer = realloc(lex->resizer, lex->length);
+    if (e->length < e->offset + length)  {
+        e->length *= 2;
+        e->length += length; // meh
+        e->resizer = realloc(e->resizer, e->length);
     }
-    __builtin_memcpy(lex->resizer + lex->offset, source, bytesof(length));
-    lex->offset += bytesof(length);
+    __builtin_memcpy(e->resizer + e->offset, source, bytesof(length));
+    e->offset += bytesof(length);
 }
+
+elastic allocate_elastic()
+{
+    elastic e = malloc(sizeof(struct elastic));
+    e->offset = 0;
+    e->length = 128;    
+    e->resizer = malloc(e->length);
+    return e;
+}
+
 
 // assuming start fits in a small
 // do we really want to update offset here? i know we're
 // not supposed to care about layering at this scope, but..
-#define make_token(__lex, __kind, __v)    \
-    ({                                          \
-    value r = timm(sym(kind), sym(__kind),     \
-                   sym(start), lex->start,      \
-                   sym(end), lex->scan,         \
-                   sym(value), __v);            \
-    lex->start = lex->scan;                     \
-    lex->offset = 0;                           \
-    r;                                          \
+#define make_token(__lex, __start, __end, __kind, __v)   \
+    ({                                       \
+    value r = timm(sym(kind), sym(__kind),   \
+                   sym(start), __start,   \
+                   sym(end), __end,      \
+                   sym(value), __v);         \
+    push_mut(__lex, (void *)&r, bitsizeof(value));      \
     })
 
     
-#define lexbuffer(__lex) allocate_utf8(__lex->resizer, __lex->offset)
+#define elbuffer(__e) allocate_utf8(__e->resizer, __e->offset)
 
 #define sourcebuffer(__lex) allocate_utf8(contentsu8(lex->b)+bytesof(lex->start), \
                                           bytesof((lex->scan - lex->start)))
 
-static inline character readc(lexer lex)
-{
-    u8 res = contentsu8(lex->b)[bytesof(lex->scan)];
-    lex->scan += 8;    
-    return res;
-}
-
+// broken for multibyte - intern?
+#define readc(__b, __offset) ({                                 \
+    character x = contentsu8(__b)[bytesof(*(__offset))];        \
+    *(__offset) = *(__offset) + utf8_length(x);                 \
+    x;                                                          \
+        })
+        
 // Reads a number literal. Lexer's grammar on numbers is not strict.
 // Integers and floating point numbers and different base numbers are not distinguished.
 // assume short
-static tuple read_number(lexer lex, int base) {
-    u64 result = 0;            
+static u64 read_number(lexer lex, int offset, int base) {
+    u64 result = 0, end = offset;            
     for (;;) {
-        character c = readc(lex);
+        character c = readc(lex->b, &offset);
         if (isdigit(c, base)) {
             result = result * base + digit_of(c);
         } else {
-            unread(lex);
-            return make_token(lex, number, (value)result);
+            make_token(lex->out, offset, end, number, (value)result);
         }
     }
-    return 0;
+    return offset;
 }
 
 // consider removing this from the target language
 // also utf8 character constants?
-static tuple read_character_constant(lexer lex) {
-    character c = readc(lex);
+static u64 read_character_constant(lexer lex, u64 offset) {
+    character c = readc(lex->b, &offset);
+    u64 end = offset;
     
     if (c == '\\') {
-        character c = readc(lex);
+        character c = readc(lex->b, &end);
         if (!(((c == '\'') || (c == '"') || (c == '?') || (c == '\\')))) {
             if (c == 'a') c = '\a';
             if (c == 'b') c = '\b';
@@ -138,58 +149,37 @@ static tuple read_character_constant(lexer lex) {
             error(p, "unknown escape character: \\%c", c);
         }
     }
-    if (readc(lex) != '"') error(p, "unterminated character constant", lex);
-    return make_token(lex, value, (value)(u64)c); 
+    if (readc(lex->b, &end) != '"') error(p, "unterminated character constant", lex);
+    make_token(lex->out, offset, end, value, (value)(u64)c);
+    return end;
 }
 
 // this needs the reassembly buffer and the \ translation
-static tuple read_string(lexer lex)
+static u64 read_string(lexer lex, u64 offset)
 {
+    u64 end = offset;
     for (;;) {
-        // we can keep the opener for just such an event
-        if (lex->offset == (u64)length(lex->b)) error(p, "unterminated string");
-        character c = readc(lex);
+        // we can keep the open token on hand for just such an event
+        if (offset == (u64)length(lex->b))
+            error(p, "unterminated string");
+        character c = readc(lex->b, &end);
         if (c == '"') break;
     }
-    return make_token(lex, string, lexbuffer(lex));
+    make_token(lex->out, offset, end, string, substring(contents(lex->b), offset, end));
+    return offset;
 }
 
 // i used to have this running through the resizer buffer
-static tuple read_ident(lexer lex) {
+static u64 read_ident(lexer lex, u64 offset) {
+    u64 end = offset;
     for (;;) {
-        character c = readc(lex);
+        character c = readc(lex->b, &end);
         if (!(isdigit(c, 10) || isalpha(c) || (c == '_'))){
-            unread(lex);
-            return make_token(lex, identifier, sourcebuffer(lex));
+            make_token(lex->out, offset, end, identifier,
+                       substring(lex->b, offset, end));
+            return end;
         }
     }
-}
-
-// not the prettiest state machine at the ball
-// static maps would get us a proper one i guess
-tuple get_token(lexer lex) {
-    if (lex->start == lex->b->length) 
-        return timm(sym(kind), sym(eof));
-    
-    character c = readc(lex);
-    while (iswhitespace(c)) { // set operation
-        lex->start+=8;
-        c = readc(lex);
-    }
-
-    // we are eating this - i guess cpp wants it
-    //    if (c == newline) return make_token(lex, newline);
-    if (c == '"') return read_string(lex);
-    if (c == '\'') return read_character_constant(lex);
-    if (isalpha(c) || (c == '_')) return read_ident(lex);
-    if (isdigit(c, 10)) {unread(lex); return read_number(lex, 10);}
-
-    while (table_get(lex->tokens, sourcebuffer(lex))) lex->scan+=8;
-    lex->scan-=8;
-    if (lex->scan > lex->start) 
-        return make_token(lex, keyword, sourcebuffer(lex));
-    
-    halt("token fail");
 }
 
 #define build_backslashes(__lex, ...) build_backslashes_internal(__lex)
@@ -198,30 +188,57 @@ void build_backslashes_internal(lexer lex, ...)
 }
 
     
-void build(lexer lex, ...)
+value set_of_strings(char *x, ...)
 {
-    char *x;
-    int total = 0; 
-    foreach_arg(lex, i) total++;
-    lex->tokens = allocate_table(total);
-    foreach_arg(lex, i) 
-        table_insert(lex->tokens, stringify(i), true);
+    int total = 1;
+    foreach_arg(x, i) total++;
+    value t = allocate_table(total);
+    //sets
+    table_insert(t, stringify(x), true);    
+    foreach_arg(x, i) table_insert(t, stringify(i), true);
+    return t;
 }
     
-lexer create_lex(buffer b)
+vector lex(buffer b)
 {
     lexer lex = malloc(sizeof(struct lexer)); // malloc?
-    lex->length = 64;
-    lex->resizer = malloc(lex->length);
-    lex->offset = 0;
+    lex->out = allocate_elastic();
     lex->b = b;
+    // sleezy workaround to avoid a linear chain...however, linear isn't
+    // so bad?   (value:int next:(value:main next:(value:eof)))
 
-    build(lex, "*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#",
-          ":", "|", "|=", "(", ")", "[", "]", "{", "}", ";", ",", "?",
-          "~", "--", "->", "-=", "<<", "/", "/=", "<=", "<:", "<%",
-          ">=", ">>", ">", "%", "%=", INVALID_ADDRESS);
+    value tokens = set_of_strings("*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#",
+                                  ":", "|", "|=", "(", ")", "[", "]", "{", "}", ";", ",", "?",
+                                  "~", "--", "->", "-=", "<<", "/", "/=", "<=", "<:", "<%",
+                                  ">=", ">>", ">", "%", "%=", INVALID_ADDRESS);
+    
+    build_backslashes(lex, a, b, f, n, r, t, v, INVALID_ADDRESS);
+    value whitespace = set_of_strings (" ", "\t", "\n");
+    u64 scan = 0; 
 
-    build_backslashes(lex, a, b, f, n, r, t, v);
+    while (scan < b->length) {
+        character c = readc(lex->b, &scan);
+        while (table_get(whitespace, (value)c)) c = readc(lex->b, &scan);
+        
+        if (c == '"') scan = read_string(lex, scan);
+        if (c == '\'') scan = read_character_constant(lex, scan);
+        if (isalpha(c) || (c == '_')) scan = read_ident(lex, scan);
+        if (isdigit(c, 10)) scan = read_number(lex, 10, scan);
 
-    return lex;
+        // we can use readc here
+        u64 start = scan;
+        while (table_get(tokens, substring(lex->b, start, scan))) scan+=8;
+        scan-=8;
+        
+        if (scan > start) 
+            make_token(lex->out, start, scan, keyword, substring(lex->b, start, scan));
+    }
+        
+    value result = allocate_table(lex->out->offset/bitsizeof(value));
+
+    // should have a vector representation - once we land a little
+    for (u64 i =0; i<lex->out->offset/bitsizeof(value); i++)
+        table_insert(result, (value)i, ((value *)(lex->out->resizer))[i]);
+    
+    return result;
 }

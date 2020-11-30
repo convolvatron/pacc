@@ -255,7 +255,7 @@ Node read_cast_expr(parser p, scope env) {
         }
         return ast_unaryop(sym(cast), ty, read_cast_expr(p, env));
     }
-    unget(p, tok);
+    p->offset--;
     return read_unary_expr(p, env);
 }
 
@@ -525,8 +525,7 @@ static Node read_var_or_func(parser p, scope env, buffer name) {
         tuple tok = token(p);
         if (!is_keyword(tok, stringify("(")))
             error(p, "undefined variable: %s", name);
-        Type ty = make_func_type(pget(p->global, sym(type), sym(int)),
-                                 0, false);
+        Type ty = make_func_type(pget(p->global, sym(type), sym(int)), 0);
         // warnt(tok, "assume returning int: %s()", name);
         return ast_funcdesg(ty, name);
     }

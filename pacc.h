@@ -38,7 +38,7 @@ static value pget_internal(void *e, ...)
 value token(parser);
 
 string make_label();
-void read_decl(parser p, scope env, vector block);
+u64 read_decl(parser p, scope env, vector block, u64 offset);
 Type read_declarator(parser p, scope env, buffer *rname, Type basety, vector params);
 Type read_decl_spec(parser p, scope env, string *rsclass);
 
@@ -51,21 +51,13 @@ static inline Type read_cast_type(parser p, scope env) {
 
 // mostly for namespace correlation
 struct parser {
-    lexer lex;
-    value readahead;
+    vector lex;
+    u64 offset; // shouldn't be global
 
     scope types; // this is 
     scope file;
     scope global;
 };
-
-static inline void unget(parser p, value t)
-{
-    if (p->readahead) {
-        halt("parser double unread");
-    }
-    p->readahead = t;
-}
 
 static Node ast_int_literal(parser p, Type ty, value val) {
     return timm("kind", sym(literal), "type", ty, "ival", val);
@@ -168,11 +160,10 @@ static inline Type make_ptr_type(Type ty) {
     return timm("kind", sym(ptr), "ptr", ty);
 }
 
-static inline Type make_func_type(Type rettype, vector paramtypes, boolean has_varargs) {
+static inline Type make_func_type(Type rettype, vector parameters) {
     return timm("kind", sym(func),
                 "rettype", rettype,
-                "params", paramtypes,
-                "hasva", has_varargs);
+                "parameters", parameters);
 }
 
 
@@ -201,17 +192,11 @@ void read_initializer_list(parser p,
 // these are macros so I get some traceability
 
 #define token(__p)\
-    ({value v;\
-    if (__p->readahead) {\
-        v = __p->readahead;\
-        __p->readahead = 0;\
-    } else {\
-        v = get_token(__p->lex);\
-        if (pget(v, sym(kind)) == sym(eof)) error(__p, "premature end of input");\
-    }                                       \
+    ({value v = table_get(p->lex, (value)p->offset);    \
+    p->offset++;\
     printf("[%s:%d]", __FUNCTION__, __LINE__);\
     output(print(pget(v, sym(value))));       \
-    printf("\n\n");\
+    printf("\n");\
     v;})
 
 #define next_token(__p, __kind) ({\
@@ -219,7 +204,7 @@ void read_initializer_list(parser p,
     value res = false;\
     if (is_keyword(tok, __kind)){\
         res = tok;\
-    } else unget(p, tok);\
+    } else p->offset--;\
     res;})
 
 static inline void expect(parser p, string id) {

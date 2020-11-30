@@ -127,3 +127,4 @@ static inline value get(value v, value k)
     }
     halt("bad lookup tag");
 }
+
