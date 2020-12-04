@@ -33,7 +33,7 @@ static Type read_enum_def(parser p, scope env) {
         buffer name = get(tok, sym(value));
 
         if (next_token(p, sym(=)))
-            val = read_intexpr(p);
+            val = read_intexpr(p, offset);
         Node constval = ast_int_literal(p, pget(p->global, sym(type), sym(int)),
                                     value_from_u64(val));
         // increment val

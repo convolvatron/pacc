@@ -1,7 +1,6 @@
 // according to the immutable worlds model we should probably do utf8 as a seperate
 // pass and let the compiler worry about interleaving/scheduling the evalution
 #include "pacc.h"
-#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 

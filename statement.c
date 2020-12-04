@@ -28,14 +28,14 @@ string make_tempname() {
 }
 
 
-static void read_decl_or_stmt(parser p, scope env, vector list) {
-    tuple tok = token(p);
+static void read_decl_or_stmt(parser p, index offset, scope env, vector list) {
+    tuple tok = token(p, offset);
     // mark_location();
     if (is_type(p, tok)) {
         // off
-        read_decl(p, env, list, 0);
+        read_decl(p, offset, env, list);
     } else {
-        Node stmt = read_stmt(p, env);
+        Node stmt = read_stmt(p, offset, env);
         //   if (stmt)
         //  push(list, stmt);
     }
@@ -46,11 +46,11 @@ static Node ast_compound_stmt(vector stmts)
     return timm("kind", sym(compound_stmt), "statments", stmts);
 }
 
-static Node read_opt_decl_or_stmt(parser p, scope env) {
-    if (next_token(p, stringify(";")))
+static Node read_opt_decl_or_stmt(parser p, index offset, scope env) {
+    if (next_token(p, offset, stringify(";")))
         return zero;
     vector list = 0;
-    read_decl_or_stmt(p, env, list);
+    read_decl_or_stmt(p, offset, env, list);
     return ast_compound_stmt(list);
 }
 
@@ -59,50 +59,50 @@ static Node ast_if(Node cond, Node then, Node els) {
 }
 
 
-static Node read_if_stmt(parser p, scope env) {
-    expect(p, stringify("("));
-    Node cond = read_expr(p, env);
-    expect(p, stringify(")"));
-    Node then = read_stmt(p, env);
-    if (!next_token(p, sym(else)))
+static Node read_if_stmt(parser p, index offset, scope env) {
+    expect(p, offset, stringify("("));
+    Node cond = read_expr(p, offset, env);
+    expect(p, offset, stringify(")"));
+    Node then = read_stmt(p, offset, env);
+    if (!next_token(p, offset, sym(else)))
         return ast_if(cond, then, zero);
-    Node els = read_stmt(p, env);
+    Node els = read_stmt(p, offset, env);
     return ast_if(cond, then, els);
 }
 
-Node read_compound_stmt(parser p, scope env)
+Node read_compound_stmt(parser p, index offset, scope env)
 {
     // push_scope(p);
     vector list = 0;
     for (;;) {
-        if (next_token(p, stringify("}")))
+        if (next_token(p, offset, stringify("}")))
             break;
-        read_decl_or_stmt(p, env, list);
+        read_decl_or_stmt(p, offset, env, list);
     }
     return ast_compound_stmt(list);
 }
 
 
 
-static Node read_do_stmt(parser p, scope env)
+static index read_do_stmt(parser p, index offset, scope env)
 {
     buffer beg = make_label();
     buffer end = make_label();
     Node body = read_stmt(p, env);
     
-    tuple tok = token(p);
+    tuple tok = token(p, offset);
     if (!is_keyword(tok, sym(while)))
         error(p, "'while' is expected, but got %s", tok);
-    expect(p, stringify("("));
-    Node cond = read_expr(p, env);
-    expect(p, stringify(")"));
-    expect(p, stringify(";"));
-    
+    expect(p, offset, stringify("("));
+    Node cond = read_expr(p, offset, env);
+    expect(p, offset++, stringify(")"));
+    expect(p, offset++, stringify(";"));
+    ast_compound_stmt(timm("begin", ast_dest(beg),
+                           "if", ast_if(cond, ast_jump(beg), zero),
+                           "body", body,
+                           "end", ast_dest(end)));
     // we can set body to zero and it will...do the right thing!
-    return ast_compound_stmt(timm("begin", ast_dest(beg),
-                                  "if", ast_if(cond, ast_jump(beg), zero),
-                                  "body", body,
-                                  "end", ast_dest(end)));
+    return offset;
 }
 
 static Node make_switch_jump(parser p, Node var, tuple c) {
@@ -127,15 +127,15 @@ static Node make_switch_jump(parser p, Node var, tuple c) {
 #define foreach(_k, _v, _t)                     \
     for (;;)
 
-static Node read_switch_stmt(parser p, scope env)
+static Node read_switch_stmt(parser p, index offset, scope env)
 {
-    expect(p, stringify("("));
-    Node expr = conv(p, read_expr(p, env));
-    expect(p, stringify(")"));
+    expect(p, offset, stringify("("));
+    Node expr = conv(p, read_expr(p, offset, env));
+    expect(p, offset, stringify(")"));
 
     buffer end = make_label();
     // push_scope(p);
-    Node body = read_stmt(p, env);
+    Node body = read_stmt(p, offset, env);
 
         
     Node var = ast_var(env, pget(expr, sym(type)), make_tempname());
@@ -153,8 +153,8 @@ static Node read_switch_stmt(parser p, scope env)
     return ast_compound_stmt(v);
 }
 
-static Node read_label_tail(parser p, scope env, Node label) {
-    Node stmt = read_stmt(p, env);
+static Node read_label_tail(parser p, index offset, scope env, Node label) {
+    Node stmt = read_stmt(p, offset, env);
     vector v = 0;
     // push(v, label);
     //    if (stmt)
@@ -163,19 +163,19 @@ static Node read_label_tail(parser p, scope env, Node label) {
 }
 
 // recurse and larvate
-static Node read_case_label(parser p, scope env, tuple tok) {
+static Node read_case_label(parser p, index offset, scope env, tuple tok) {
     vector cases = pget(env, sym(cases));
     if (!cases) error(p, "stray case label");
     buffer label = make_label();
-    int beg = read_intexpr(p);
-    if (next_token(p, sym(...))) {
-        int end = read_intexpr(p);
-        expect(p, stringify(":"));
+    int beg = read_intexpr(p, offset);
+    if (next_token(p, offset, sym(...))) {
+        int end = read_intexpr(p, offset);
+        expect(p, offset, stringify(":"));
         if (beg > end)
             error(p, "case region is not in correct order: %d ... %d", beg, end);
         // push(cases, make_case(beg, end, label));
     } else {
-        expect(p, stringify(":"));
+        expect(p, offset, stringify(":"));
         // push(cases, make_case(beg, beg, label));
     }
     // inline - this seems..broken anyways - do it on insert!
@@ -183,26 +183,27 @@ static Node read_case_label(parser p, scope env, tuple tok) {
     return read_label_tail(p, env, ast_dest(label));
 }
 
-static Node read_default_label(parser p, scope env, tuple tok) {
-    expect(p, stringify(":"));
+static Node read_default_label(parser p, index offset, scope env, tuple tok) {
+    expect(p, offset, stringify(":"));
     if (pget(p->global, sym(defaultcase)))
         error(p, "duplicate default");
     value lab = make_label();
     return read_label_tail(p,
+                           offset, 
                            allocate_scope(env, sym(defaultcase), lab), // lifetime
                            ast_dest(lab));
 }
 
-static Node read_break_stmt(parser p, scope env, tuple tok) {
-    expect(p, stringify(";"));
+static Node read_break_stmt(parser p, index offset, scope env, tuple tok) {
+    expect(p, offset, stringify(";"));
     value b;
     if (!(b =pget(env, sym(targets), sym(break))))
         error(p, "stray break statement");
     return ast_jump(b);
 }
 
-static Node read_continue_stmt(parser p, scope env, tuple tok) {
-    expect(p, stringify(";"));
+static Node read_continue_stmt(parser p, index offset, scope env, tuple tok) {
+    expect(p, offset, stringify(";"));
     value lc;
     if (!(lc =pget(env, sym(targets), sym(continue))))
         error(p, "stray continue statement");
@@ -215,27 +216,27 @@ static Node ast_return(Node retval)
     return timm("kind", sym(return), "retval", retval);
 }
 
-static Node read_return_stmt(parser p, scope env) {
-    Node retval = read_expr(p, env);
-    expect(p, stringify(";"));
+static Node read_return_stmt(parser p, index offset, scope env) {
+    Node retval = read_expr(p, offset, env);
+    expect(p, offset, stringify(";"));
     if (retval)
         return ast_return(ast_conv(pget(env, sym(__return_type)), retval));
     return ast_return(zero);
 }
 
-static Node read_goto_stmt(parser p, scope env) {
-    if (next_token(p, sym(*))) {
+static Node read_goto_stmt(parser p, index offset, scope env) {
+    if (next_token(p, offset, sym(*))) {
         // [GNU] computed goto. "goto *p" jumps to the address pointed by p.
 
-        Node expr = read_cast_expr(p, env);
+        Node expr = read_cast_expr(p, offset, env);
         if (pget(expr, sym(type), sym(kind)) != sym(ptr))
             error(p, "pointer expected for computed goto, but got %s", node2s(expr));
         return ast_computed_goto(expr);
     }
-    tuple tok = token(p);
+    tuple tok = token(p, offset);
     if (!tok || (pget(tok, sym(kind)) != sym(identifier)))
         error(p, "identifier expected, but got", tok);
-    expect(p, stringify(";"));
+    expect(p, offset, stringify(";"));
     Node r = ast_goto(pget(tok, sym(value)));
     // why...am I keep track of the gotos? for fixup? - yes
     // push(pget(p->global, sym(gotos)), r);
@@ -264,18 +265,19 @@ static tuple make_case(int beg, int end, buffer label) {
     return timm("begin", beg, "end", end, "label", label);
 }
 
-static Node read_for_stmt(parser p, scope env) {
-    expect(p, stringify("("));
+static Node read_for_stmt(parser p, index offset, scope env) {
+    expect(p, offset, stringify("("));
+    // jumps go to nodes
     buffer beg = make_label();
     buffer mid = make_label();
     buffer end = make_label();
     // push_scope(p);
     Node init = read_opt_decl_or_stmt(p, env);
-    Node cond = read_expr(p, env);
-    expect(p, stringify(";"));
-    Node step = read_expr(p, env);
-    expect(p, stringify(")"));
-    Node body = read_stmt(p, env);
+    Node cond = read_expr(p, offset, env);
+    expect(p, offset, stringify(";"));
+    Node step = read_expr(p, offset, env);
+    expect(p, offset, stringify(")"));
+    Node body = read_stmt(p, offset, env);
 
     return ast_compound_stmt(timm("init", init,
                                   "cond", cond?ast_if(cond, zero, ast_jump(end)):0,
@@ -287,16 +289,16 @@ static Node read_for_stmt(parser p, scope env) {
 
 #define allocate_vector(...) true
 
-static Node read_while_stmt(parser p, scope env) {
-    expect(p, stringify("("));
-    Node cond = read_expr(p, env);
-    expect(p, stringify(")"));
+static Node read_while_stmt(parser p, index offset, scope env) {
+    expect(p, offset, stringify("("));
+    Node cond = read_expr(p, offset, env);
+    expect(p, offset, stringify(")"));
 
     buffer beg = make_label();
     buffer end = make_label();
     // push_scope(p);
     //   SET_JUMP_LABELS(beg, end);
-    Node body = read_stmt(p, env);
+    Node body = read_stmt(p, offset, env);
 
 
     // why not timm here?
@@ -308,29 +310,28 @@ static Node read_while_stmt(parser p, scope env) {
 }
 
 
-Node read_stmt(parser p, scope env) {
-    tuple tok = token(p);
+Node read_stmt(parser p, index offset, scope env) {
+    tuple tok = token(p, offset);
     value id = pget(tok, sym(id));
     value k = pget(tok, sym(kind));
     if (k == sym(keyword)) {
-        if (id == stringify("{")) read_compound_stmt(p, env);
-        if (id == sym(if)) read_if_stmt(p, env);
-        if (id == sym(for)) read_for_stmt(p, env);
-        if (id == sym(while))  return read_while_stmt(p, env);
-        if (id == sym(do))    return read_do_stmt(p, env);
-        if (id == sym(return))  return read_return_stmt(p, env);
-        if (id == sym(switch))  return read_switch_stmt(p, env);
-        if (id == sym(case))   return read_case_label(p, env, tok);
-        if (id == sym(default)) return read_default_label(p, env,  tok);
-        if (id == sym(break))  return read_break_stmt(p, env, tok);
-        if (id == sym(continue)) return read_continue_stmt(p, env, tok);
-        if (id == sym(goto))   return read_goto_stmt(p, env);
+        if (id == stringify("{")) read_compound_stmt(p, offset, env);
+        if (id == sym(if)) read_if_stmt(p, offset, env);
+        if (id == sym(for)) read_for_stmt(p, offset, env);
+        if (id == sym(while))  return read_while_stmt(p, offset, env);
+        if (id == sym(do))    return read_do_stmt(p, offset, env);
+        if (id == sym(return))  return read_return_stmt(p, offset, env);
+        if (id == sym(switch))  return read_switch_stmt(p, offset, env);
+        if (id == sym(case))   return read_case_label(p, offset, env, tok);
+        if (id == sym(default)) return read_default_label(p, offset, env,  tok);
+        if (id == sym(break))  return read_break_stmt(p, offset, env, tok);
+        if (id == sym(continue)) return read_continue_stmt(p, offset, env, tok);
+        if (id == sym(goto))   return read_goto_stmt(p, offset, env);
     }
-    if ((k == sym(identifier)) && next_token(p, stringify(":")))
+    if ((k == sym(identifier)) && next_token(p, offset, stringify(":")))
         return read_label(p, env, tok);
 
-    //  unget_token(tok);
-    Node r = read_expr(p, env);
-    expect(p, stringify(";"));
+    Node r = read_expr(p, offset, env);
+    expect(p, offset, stringify(";"));
     return r;
 }

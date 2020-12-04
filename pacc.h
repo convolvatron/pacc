@@ -16,15 +16,16 @@ typedef tuple Node;
 #define error(p, ...)       
 boolean is_keyword(tuple tok, string c);
 typedef struct lexer *lexer;
-tuple get_token(lexer lex);
 value parse(buffer b);
 lexer create_lex(buffer b);
 
 typedef struct lexer *lexer;
 typedef struct parser *parser;
+typedef u64 index;
+
 Node conv(parser p, Node node);
-Node read_subscript_expr(parser p, scope env, Node node);
-Node read_expr(parser p, scope env);
+Node read_subscript_expr(parser p, index offset, scope env, Node node);
+Node read_expr(parser p, index offset, scope env);
 Node conv(parser p, Node node);
 
 
@@ -35,24 +36,23 @@ static value pget_internal(void *e, ...)
     return e;
 }
 
-value token(parser);
 
 string make_label();
-u64 read_decl(parser p, scope env, vector block, u64 offset);
-Type read_declarator(parser p, scope env, buffer *rname, Type basety, vector params);
-Type read_decl_spec(parser p, scope env, string *rsclass);
+
+u64 read_decl(parser p, index offset, scope env, vector block);
+Type read_declarator(parser p, index offset, scope env, buffer *rname, Type basety, vector params);
+Type read_decl_spec(parser p, index offset, scope env, string rsclass);
 
 
-static inline Type read_cast_type(parser p, scope env) {
+static inline Type read_cast_type(parser p, index offset, scope env) {
     // DECL_CAST
-    return read_declarator(p, env, zero, read_decl_spec(p, env, zero), zero);
+    return read_declarator(p, offset, env, zero, read_decl_spec(p, offset, env, zero), zero);
 }
 
 
 // mostly for namespace correlation
 struct parser {
-    vector lex;
-    u64 offset; // shouldn't be global
+    vector tokens;
 
     scope types; // this is 
     scope file;
@@ -128,13 +128,13 @@ static inline boolean is_type(parser p, tuple tok)
 }
 
 
-static Node read_stmt(parser p, scope env);
+static Node read_stmt(parser p, index offset, scope env);
 
 static Node ast_binop(parser p, Type ty, string kind, Node left, Node right) {
     return timm("kind", kind, "type", ty, "left", left, "right", right);
 }
 
-Node read_compound_stmt(parser p, scope env);
+Node read_compound_stmt(parser p, index offset, scope env);
 
 
 static Node ast_conv(Type totype, Node val) {
@@ -144,7 +144,7 @@ static Node ast_conv(Type totype, Node val) {
 
 #define allocate_scope(...) true
 
-Node read_assignment_expr(parser p, scope env);
+Node read_assignment_expr(parser p, index offset, scope env);
 
 // we care about the ordering, so a map and a vector..
 static inline Type lookup_field(Type t, value s)
@@ -173,16 +173,9 @@ static inline boolean is_string(Type ty) {
                      (pget(ty, sym(ptr), sym(kind)) == sym(char)));
 }
 
-int read_intexpr(parser p);
+int read_intexpr(parser p, index offset);
 
-Node read_cast_expr(parser p, scope env);
-
-void read_initializer_list(parser p,
-                           scope env,
-                           vector inits,
-                           Type ty,
-                           boolean designated);
-
+Node read_cast_expr(parser p, index offset, scope env);
 
 
 //static inline boolean next_token(parser p, string kind) {
@@ -191,24 +184,21 @@ void read_initializer_list(parser p,
 
 // these are macros so I get some traceability
 
-#define token(__p)\
-    ({value v = table_get(p->lex, (value)p->offset);    \
-    p->offset++;\
+#define token(__p, __offset)                                  \
+    ({value v = get(p->tokens, (value)__offset);    \
     printf("[%s:%d]", __FUNCTION__, __LINE__);\
     output(print(pget(v, sym(value))));       \
     printf("\n");\
     v;})
 
-#define next_token(__p, __kind) ({\
-    tuple tok = token(p);\
-    value res = false;\
-    if (is_keyword(tok, __kind)){\
-        res = tok;\
-    } else p->offset--;\
+#define next_token(__p, __offset, __kind) ({            \
+    tuple tok = token(p, __offset);                      \
+    value res = false;                                   \
+    if (is_keyword(tok, __kind)) res = tok;              \
     res;})
 
-static inline void expect(parser p, string id) {
-    tuple tok = token(p);
+static inline void expect(parser p, u64 offset, string id) {
+    tuple tok = token(p, offset);
     if (!is_keyword(tok, id))
         error(p, "'%c' expected, but got", id, tok);
 }

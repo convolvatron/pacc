@@ -2,7 +2,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <pacc.h>
-#include <string.h>
 #include <stdlib.h>
 
 char *a[]={"int x;",
