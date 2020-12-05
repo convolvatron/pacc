@@ -116,7 +116,7 @@ static Type read_typeof(parser p, index offset, scope env) {
     expect(p, offset, stringify("("));
     Type r = is_type(p, token(p, offset))
         ? read_cast_type(p, offset, env)
-        : pget(read_expr(p, env), sym(type));
+        : pget(read_expr(p, offset, env), sym(type));
     expect(p, offset, stringify(")"));
     return r;
 }
@@ -213,36 +213,18 @@ static Node read_postfix_expr_tail(parser p, index offset, scope env, Node node)
 static Node read_unary_expr(parser p, index offset, scope env) ;
 
 
-static vector read_decl_init(parser p, index offset, scope env, Type ty) {
-    vector r = 0;
-    if (is_keyword(token(p, offset), stringify("{")) || is_string(ty)) {
-        read_initializer_list(p, offset, env, r, ty, false);
-    } else {
-        Node init = conv(p, read_assignment_expr(p, offset, env));
-        if (is_inttype(pget(init, sym(type))) && pget(init, sym(type), sym(kind)) != pget(ty, sym(kind)))
-            init = ast_conv(ty, init);
-        // push(r, ast_init(init, ty));
-    }
-    return r;
-}
-
-static Node read_compound_literal(parser p, index offset, scope env, Type ty) {
-    buffer name = make_label();
-    vector init = read_decl_init(p, offset, env, ty);
-    Node r = ast_var(env, ty, name);
-    // set(r, sym(init), init);
-    return r;
-}
-
-
 Node read_cast_expr(parser p, index offset, scope env) {
     tuple tok = token(p, offset);
     if (is_keyword(tok, stringify("(")) && is_type(p, token(p, offset+1))) {
         Type ty = read_cast_type(p, offset, env);
         expect(p, offset + 2, stringify(")"));
         if (is_keyword(token(p, offset + 3), stringify("}"))) {
-            Node node = read_compound_literal(p, offset, env, ty);
-            return read_postfix_expr_tail(p, offset, env, node);
+            // compound literal
+            buffer name = make_label();
+            vector init = read_decl_init(p, offset, env, ty);
+            Node r = ast_var(env, ty, name);
+            // set(r, sym(init), init);
+            return read_postfix_expr_tail(p, offset, env, r);
         }
         return ast_unaryop(sym(cast), ty, read_cast_expr(p, offset, env));
     }
@@ -259,7 +241,7 @@ static Node read_multiplicative_expr(parser p, index offset, scope env) {
         node = binop(p, sym(/), conv(p, node), conv(p, read_cast_expr(p, offset, env)));
     else if (next_token(p, offset, sym(%)))
         node = binop(p, sym(%), conv(p, node), conv(p, read_cast_expr(p, offset, env)));
-    else  return node;
+    return node;
 }
 
 static Node read_additive_expr(parser p, index offset, scope env) {
@@ -268,7 +250,7 @@ static Node read_additive_expr(parser p, index offset, scope env) {
         node = binop(p, sym(+), conv(p, node), conv(p, read_multiplicative_expr(p, offset, env)));
     else if (next_token(p, offset, sym(-)))
         node = binop(p, sym(-), conv(p, node), conv(p, read_multiplicative_expr(p, offset, env)));
-    else return node;
+    return node;
 }
 
 static Node read_shift_expr(parser p, index offset, scope env) {
@@ -279,7 +261,7 @@ static Node read_shift_expr(parser p, index offset, scope env) {
         op = sym(<<);
     else if (next_token(p, offset, sym(>>)))
         op = sym(>>);
-    else return offset;
+    else return zero;
         
     Node right = read_additive_expr(p, offset, env);
     node = ast_binop(p, pget(node, sym(type)), op, conv(p, node), conv(p, right));
@@ -552,7 +534,7 @@ static Node read_primary_expr(parser p, index offset, scope env) {
 
 
 static Node read_sizeof_operand(parser p, index offset, scope env) {
-    tuple tok = get(p->lex, (value)offset);
+    tuple tok = get(p->tokens, (value)offset);
     if (is_keyword(tok, stringify("(")) && is_type(p, token(p, offset))) {
         Type r = read_cast_type(p, offset, env);
 
@@ -577,7 +559,7 @@ static Node read_alignof_operand(parser p, index offset, scope env) {
 }
 
 static Node read_unary_expr(parser p, index offset, scope env) {
-    tuple tok = get_token(p->lex);
+    tuple tok = token(p, offset);
     if (pget(tok, sym(kind)) == sym(keyword)) {
         value id = pget(tok, sym(id));
         if (id == sym(sizeof)) return read_sizeof_operand(p, offset, env);

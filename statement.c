@@ -84,11 +84,11 @@ Node read_compound_stmt(parser p, index offset, scope env)
 
 
 
-static index read_do_stmt(parser p, index offset, scope env)
+static Node read_do_stmt(parser p, index offset, scope env)
 {
     buffer beg = make_label();
     buffer end = make_label();
-    Node body = read_stmt(p, env);
+    Node body = read_stmt(p, offset, env);
     
     tuple tok = token(p, offset);
     if (!is_keyword(tok, sym(while)))
@@ -97,12 +97,11 @@ static index read_do_stmt(parser p, index offset, scope env)
     Node cond = read_expr(p, offset, env);
     expect(p, offset++, stringify(")"));
     expect(p, offset++, stringify(";"));
-    ast_compound_stmt(timm("begin", ast_dest(beg),
-                           "if", ast_if(cond, ast_jump(beg), zero),
-                           "body", body,
-                           "end", ast_dest(end)));
-    // we can set body to zero and it will...do the right thing!
-    return offset;
+
+    return  ast_compound_stmt(timm("begin", ast_dest(beg),
+                                   "if", ast_if(cond, ast_jump(beg), zero),
+                                   "body", body,
+                                   "end", ast_dest(end)));
 }
 
 static Node make_switch_jump(parser p, Node var, tuple c) {
@@ -180,7 +179,7 @@ static Node read_case_label(parser p, index offset, scope env, tuple tok) {
     }
     // inline - this seems..broken anyways - do it on insert!
     //   check_case_duplicates(cases);
-    return read_label_tail(p, env, ast_dest(label));
+    return read_label_tail(p, offset, env, ast_dest(label));
 }
 
 static Node read_default_label(parser p, index offset, scope env, tuple tok) {
@@ -243,14 +242,14 @@ static Node read_goto_stmt(parser p, index offset, scope env) {
     return r;
 }
 
-static Node read_label(parser p, scope env, tuple tok)
+static Node read_label(parser p, index offset, scope env, tuple tok)
 {
     buffer label = pget(tok, sym(sval));
     if (pget(env, sym(labels), label))
         error(p, "duplicate label: %s", tok);
     Node r = timm("kind", sym(label), "name", label);
     //    xxx - update - set(pget(p->global, sym(labels)), sym(label), r);
-    return read_label_tail(p, env, r);
+    return read_label_tail(p, offset, env, r);
 }
 
 
@@ -272,7 +271,7 @@ static Node read_for_stmt(parser p, index offset, scope env) {
     buffer mid = make_label();
     buffer end = make_label();
     // push_scope(p);
-    Node init = read_opt_decl_or_stmt(p, env);
+    Node init = read_opt_decl_or_stmt(p, offset, env);
     Node cond = read_expr(p, offset, env);
     expect(p, offset, stringify(";"));
     Node step = read_expr(p, offset, env);
@@ -310,6 +309,7 @@ static Node read_while_stmt(parser p, index offset, scope env) {
 }
 
 
+// maybe index is in the semantic value?
 Node read_stmt(parser p, index offset, scope env) {
     tuple tok = token(p, offset);
     value id = pget(tok, sym(id));
@@ -329,7 +329,7 @@ Node read_stmt(parser p, index offset, scope env) {
         if (id == sym(goto))   return read_goto_stmt(p, offset, env);
     }
     if ((k == sym(identifier)) && next_token(p, offset, stringify(":")))
-        return read_label(p, env, tok);
+        return read_label(p, offset, env, tok);
 
     Node r = read_expr(p, offset, env);
     expect(p, offset, stringify(";"));

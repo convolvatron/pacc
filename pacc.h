@@ -7,7 +7,7 @@
 typedef value location;
 typedef value scope;
 typedef scope Type;
-typedef value vector;
+typedef buffer vector;
 
 typedef struct lexer *lexer;
 typedef value tuple;
@@ -17,7 +17,7 @@ typedef tuple Node;
 boolean is_keyword(tuple tok, string c);
 typedef struct lexer *lexer;
 value parse(buffer b);
-lexer create_lex(buffer b);
+vector lex(buffer b);
 
 typedef struct lexer *lexer;
 typedef struct parser *parser;
@@ -28,6 +28,16 @@ Node read_subscript_expr(parser p, index offset, scope env, Node node);
 Node read_expr(parser p, index offset, scope env);
 Node conv(parser p, Node node);
 
+
+
+// mostly for namespace correlation
+struct parser {
+    vector tokens;
+
+    scope types; // this is 
+    scope file;
+    scope global;
+};
 
 #define pget(__e, ...) pget_internal(__e, __VA_ARGS__, INVALID_ADDRESS)
 static value pget_internal(void *e, ...)
@@ -49,15 +59,6 @@ static inline Type read_cast_type(parser p, index offset, scope env) {
     return read_declarator(p, offset, env, zero, read_decl_spec(p, offset, env, zero), zero);
 }
 
-
-// mostly for namespace correlation
-struct parser {
-    vector tokens;
-
-    scope types; // this is 
-    scope file;
-    scope global;
-};
 
 static Node ast_int_literal(parser p, Type ty, value val) {
     return timm("kind", sym(literal), "type", ty, "ival", val);
@@ -203,3 +204,4 @@ static inline void expect(parser p, u64 offset, string id) {
         error(p, "'%c' expected, but got", id, tok);
 }
 
+vector read_decl_init(parser p, index offset, scope env, Type ty);
