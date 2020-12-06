@@ -53,7 +53,7 @@ value table_get(value t, value k)
     value *p;
     
     while ((*(p = slot(b, h++)) && (count++ < tlen)))
-            if (p[0] == k) return p[1];
+        if (equals(p[0],k)) return p[1];
     return 0;
 }
 

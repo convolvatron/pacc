@@ -45,6 +45,8 @@ void runtime_init();
 
 #include <stdio.h>
 
+#define INVALID_ADDRESS ((void *)(-1ull))
+
 //deprintify
 __attribute__((noreturn)) void halt_internal(char *message, ...);
 #define halt(...) {\
@@ -53,7 +55,6 @@ __attribute__((noreturn)) void halt_internal(char *message, ...);
 
 typedef u64 tag;
 
-// we're going to pivot here to a single parameterized get
 #define tag_offset 36ull
 #define tag_small 0ull
 #define tag_map 1ull
@@ -83,12 +84,21 @@ static inline value stringify(char *x)
 
 void table_insert(buffer t, value k, value v);
 
+// maybe a star?
+static inline bits utf8_length(u32 x)
+{
+    if (~x & 0x80) return 8;
+    if ((x & 0xe0) == 0xc0) return 16;
+    if ((x & 0xf0) == 0xe0) return 24;
+    if ((x & 0xf8) == 0xf0) return 32;
+    halt("invalid utf8 character");
+}
+
 buffer print(value);
 void output(buffer b);
 
 value table_get(value t, value k);
 
-#define INVALID_ADDRESS ((void *)(-1ull))
 
 static inline value timm_internal(value trash, ...)
 {
@@ -113,11 +123,34 @@ static inline value timm_internal(value trash, ...)
 #define scan_buffer(__i, __t, __stride, _ty)\
     for (void *__j = contents(__t), *__end = __j+(( __t)->length>>6); (__i = __j), (__j<__end); __j += __stride/8)
 
+value get_small(value v, value k);
+
+static inline buffer substring(void *base, bits start, bits end)
+{
+    return allocate_utf8(base+(start>>3), end-start);
+}
+
 static inline value get(value v, value k)
 {
     if (v == zero) return zero;
-    if (tagof(v) == tag_map) return table_get(v, k);
-    // union
+    
+    if (tagof(v) == tag_map)
+        return table_get(v, k);
+
+    if (tagof(v) == tag_small)
+        return get_small(v, k);
+
+    // oh...you...
+    if (tagof(v) == tag_utf8) {
+        // 4g runes
+        buffer s = v;
+        if (tagof(k) == tag_small) return false; // xx or large
+        u64 start = 0;
+        for (u64 ind=0, bit =0; ind < (u64)k;
+             ind++, bit += utf8_length(*contentsu8(s)+bytesof(start)));
+        return substring(s, start, start+utf8_length(*contentsu8(s)+bytesof(start)));
+    }
+            
     if (tagof(v) == tag_union){
         value i;
         scan_buffer(i, (buffer)v, bitsizeof(value), value) {
@@ -127,4 +160,28 @@ static inline value get(value v, value k)
     }
     halt("bad lookup tag");
 }
+
+boolean iterate_internal(value m, value *index, value *k, value *v);
+#define foreach(__k, __v, __f)\
+    for(value __k, __v, __ind = 0;iterate_internal(__f, &__ind, &__k, &__v);) 
+     
+
+static inline boolean equals(value a, value b)
+{
+    u64 count = 0;
+    if (a == b) return true;
+    foreach(ka, va, a) {
+        if (va != get(b, ka)) return false;
+        count++;
+    }
+    // we are trying to avoid committing to length, so we are doing another
+    // order n. if foreach is defined, then length is defined..so..
+    foreach(ka, va, a) count--;
+    
+    return toboolean(count == 0);
+}
+
+
+
+
 

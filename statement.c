@@ -123,9 +123,6 @@ static Node make_switch_jump(parser p, Node var, tuple c) {
     return ast_if(cond, ast_jump(pget(c, sym(name))), zero);
 }
 
-#define foreach(_k, _v, _t)                     \
-    for (;;)
-
 static Node read_switch_stmt(parser p, index offset, scope env)
 {
     expect(p, offset, stringify("("));

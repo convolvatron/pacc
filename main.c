@@ -12,7 +12,10 @@ int main(int argc, char **argv)
 {
     runtime_init();
     
-    for (int i = 0; i < sizeof(a)/sizeof(char *); i++) 
-        parse(allocate_utf8((u8 *)a[i], strlen(a[i])));
+    for (int i = 0; i < sizeof(a)/sizeof(char *); i++) {
+        int len = 0; 
+        while (a[i][len]) len++;
+        parse(allocate_utf8((u8 *)a[i], len-1));
+    }
 }
 

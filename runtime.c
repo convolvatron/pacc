@@ -14,6 +14,62 @@ static buffer world;
 
 #define is_bitstring(__x) ((tagof(__x) == tag_large) || (tagof(__x) == tag_utf8))
 
+// it seems a bit odd to be using an iteration index when we beleive that the
+// essential character of functions is immune to any notion of order (unless
+// that is explicitly part of the domain of the function (better word), but
+// there is still no implied ordering.
+//
+// but globally - we dont care about the implmentation here until there are
+//   user defined iterables
+
+
+boolean iterate_internal(value m, value *index, value *k, value *v)
+{
+    if (tagof(m) == tag_map) {
+        u64 *p = (u64 *)v;
+        *v = 0;
+        while (!*v) {
+            // we should share this 
+            value *t = (value *)contentsu8((buffer)m) + bytesof(*p);
+            *k = t[0];
+            *v = t[1];
+            *p += 128;
+        }
+    }
+
+    if (tagof(m) == tag_small) {
+        u64 i = *(u64 *)index ^ (u64)m;
+        if (!i) return false;
+
+        u64 b = (u64)__builtin_ffsll(*(u64 *)index);
+        b = b-1;
+        *(u64 *)index |= b;
+        *k = (value)b;
+        return true;    
+    }
+
+    // we need the string index and the byte index. temporarily packing
+    // into a value, but need a better soln, since it limits strings
+    // to 512MB
+    if (tagof(m) == tag_utf8) {
+        buffer s = (buffer)m;
+        u64 runei = (*(u64 *)index) >> 32;
+        u64 biti = (*(u64 *)index) & ((1ull<<32)-1);
+        if (biti < s->length) {
+            u8 *b = contentsu8(s) + bytesof(biti);
+            u64 len = utf8_length(*b);
+            *k = (value)runei;
+            *v = substring(contents(s), biti, biti+len);
+            *(u64 *)index = ((runei + 1) << 32) | (biti + len);
+            return true;
+        }
+        return false;
+    }
+
+    halt("implement iterate");
+}
+
+        
 // we're going to use this for tables...but i think there are some
 // normalization issues w/ zero values...also with trailing bits
 static boolean buffer_compare(buffer a, u8 *b, u64 length)

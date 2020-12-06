@@ -205,3 +205,4 @@ static inline void expect(parser p, u64 offset, string id) {
 }
 
 vector read_decl_init(parser p, index offset, scope env, Type ty);
+

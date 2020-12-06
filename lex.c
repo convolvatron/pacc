@@ -7,12 +7,6 @@
 typedef u32 character; 
 
 
-static inline buffer substring(void *base, bits start, bits end)
-{
-    return allocate_utf8(base+(start>>3), end-start);
-}
-
-
 typedef struct elastic { //ahem
     u8 *resizer;
     bits offset;
@@ -39,15 +33,6 @@ static inline u64 digit_of(character x)
     return -1ull;
 }
 
-static inline bits utf8_length(character x)
-{
-    if (~x & 0x80) return 8;
-    if ((x & 0xe0) == 0xc0) return 16;
-    if ((x & 0xf0) == 0xe0) return 24;
-    if ((x & 0xf8) == 0xf0) return 32;
-    halt("invalid utf8 character");
-}
-
 static inline boolean isdigit(character x, int base)
 {
     // broken for hex
@@ -71,7 +56,7 @@ static inline void push_mut(elastic e, unsigned char *source, bits length)
         e->resizer = realloc(e->resizer, e->length);
     }
     __builtin_memcpy(e->resizer + e->offset, source, bytesof(length));
-    e->offset += bytesof(length);
+    e->offset += length;
 }
 
 elastic allocate_elastic()
@@ -102,37 +87,38 @@ elastic allocate_elastic()
 #define sourcebuffer(__lex) allocate_utf8(contentsu8(lex->b)+bytesof(lex->start), \
                                           bytesof((lex->scan - lex->start)))
 
-// broken for multibyte - intern?
-#define readc(__b, __offset) ({                                 \
-    character x = contentsu8(__b)[bytesof(*(__offset))];        \
-    *(__offset) = *(__offset) + utf8_length(x);                 \
+#define readc(__b, __offset, __next) ({                         \
+    character x = contentsu8(__b)[bytesof(__offset)];           \
+    __next = __offset + utf8_length(x);                         \
     x;                                                          \
-        })
-        
+   })
+            
 // Reads a number literal. Lexer's grammar on numbers is not strict.
 // Integers and floating point numbers and different base numbers are not distinguished.
 // assume short
 static u64 read_number(lexer lex, int offset, int base) {
     u64 result = 0, end = offset;            
     for (;;) {
-        character c = readc(lex->b, &offset);
+        character c = readc(lex->b, offset, end);
         if (isdigit(c, base)) {
             result = result * base + digit_of(c);
+            offset = end;
         } else {
             make_token(lex->out, offset, end, number, (value)result);
         }
     }
+    // its in the token?
     return offset;
 }
 
 // consider removing this from the target language
 // also utf8 character constants?
 static u64 read_character_constant(lexer lex, u64 offset) {
-    character c = readc(lex->b, &offset);
-    u64 end = offset;
+    u64 end;
+    character c = readc(lex->b, offset, end);
     
     if (c == '\\') {
-        character c = readc(lex->b, &end);
+        character c = readc(lex->b, end, end);
         if (!(((c == '\'') || (c == '"') || (c == '?') || (c == '\\')))) {
             if (c == 'a') c = '\a';
             if (c == 'b') c = '\b';
@@ -148,7 +134,7 @@ static u64 read_character_constant(lexer lex, u64 offset) {
             error(p, "unknown escape character: \\%c", c);
         }
     }
-    if (readc(lex->b, &end) != '"') error(p, "unterminated character constant", lex);
+    if (readc(lex->b, end, end) != '"') error(p, "unterminated character constant", lex);
     make_token(lex->out, offset, end, value, (value)(u64)c);
     return end;
 }
@@ -161,7 +147,7 @@ static u64 read_string(lexer lex, u64 offset)
         // we can keep the open token on hand for just such an event
         if (offset == (u64)length(lex->b))
             error(p, "unterminated string");
-        character c = readc(lex->b, &end);
+        character c = readc(lex->b, end, end);
         if (c == '"') break;
     }
     make_token(lex->out, offset, end, string, substring(contents(lex->b), offset, end));
@@ -172,12 +158,14 @@ static u64 read_string(lexer lex, u64 offset)
 static u64 read_ident(lexer lex, u64 offset) {
     u64 end = offset;
     for (;;) {
-        character c = readc(lex->b, &end);
+        u64 next;
+        character c = readc(lex->b, end, next);
         if (!(isdigit(c, 10) || isalpha(c) || (c == '_'))){
             make_token(lex->out, offset, end, identifier,
                        substring(lex->b, offset, end));
             return end;
         }
+        end = next;
     }
 }
 
@@ -212,32 +200,41 @@ vector lex(buffer b)
                                   ">=", ">>", ">", "%", "%=", INVALID_ADDRESS);
     
     build_backslashes(lex, a, b, f, n, r, t, v, INVALID_ADDRESS);
-    value whitespace = set_of_strings (" ", "\t", "\n");
-    u64 scan = 0; 
+    value whitespace = set_of_strings (" ", "\t", "\n", INVALID_ADDRESS);
+    u64 scan = 0, next; 
 
+    output(print(whitespace));
     while (scan < b->length) {
-        character c = readc(lex->b, &scan);
-        while (table_get(whitespace, (value)c)) c = readc(lex->b, &scan);
-        
+        character c = readc(lex->b, scan, next);
+        printf ("lex: %c\n", (char)c);
+        // double get
+        while (table_get(whitespace, (value)c)) {
+            c = readc(lex->b, scan, next);
+            scan = next;
+        }
+
+        // nescan one of these
         if (c == '"') scan = read_string(lex, scan);
         if (c == '\'') scan = read_character_constant(lex, scan);
         if (isalpha(c) || (c == '_')) scan = read_ident(lex, scan);
         if (isdigit(c, 10)) scan = read_number(lex, 10, scan);
 
-        // we can use readc here
         u64 start = scan;
-        while (table_get(tokens, substring(lex->b, start, scan))) scan+=8;
-        scan-=8;
+        printf("lex: %lld %lld\n", scan, start);
+        while (table_get(tokens, substring(lex->b, start, scan+8))) scan+=8;
         
-        if (scan > start) 
+        if (scan > start) {
             make_token(lex->out, start, scan, keyword, substring(lex->b, start, scan));
+        } 
     }
-        
+    printf ("lex results: %llx\n", lex->out->offset);
     value result = allocate_table(lex->out->offset/bitsizeof(value));
 
     // should have a vector representation - once we land a little
     for (u64 i =0; i<lex->out->offset/bitsizeof(value); i++)
         table_insert(result, (value)i, ((value *)(lex->out->resizer))[i]);
-    
+
+    output(print(result));
+    printf("\n");
     return result;
 }
