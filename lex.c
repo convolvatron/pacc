@@ -4,9 +4,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-typedef u32 character; 
-
-
 typedef struct elastic { //ahem
     u8 *resizer;
     bits offset;
@@ -81,17 +78,11 @@ elastic allocate_elastic()
     push_mut(__lex, (void *)&r, bitsizeof(value));      \
     })
 
-    
-#define elbuffer(__e) allocate_utf8(__e->resizer, __e->offset)
-
-#define sourcebuffer(__lex) allocate_utf8(contentsu8(lex->b)+bytesof(lex->start), \
-                                          bytesof((lex->scan - lex->start)))
-
 #define readc(__b, __offset, __next) ({                         \
-    character x = contentsu8(__b)[bytesof(__offset)];           \
-    __next = __offset + utf8_length(x);                         \
-    x;                                                          \
-   })
+            character x = characterof(__b, __offset);           \
+            __next = __offset + utf8_length(x);                 \
+            x;                                                  \
+            })
             
 // Reads a number literal. Lexer's grammar on numbers is not strict.
 // Integers and floating point numbers and different base numbers are not distinguished.
@@ -99,7 +90,7 @@ elastic allocate_elastic()
 static u64 read_number(lexer lex, int offset, int base) {
     u64 result = 0, end = offset;            
     for (;;) {
-        character c = readc(lex->b, offset, end);
+        character c = (u32)readc(lex->b, offset, end);
         if (isdigit(c, base)) {
             result = result * base + digit_of(c);
             offset = end;
@@ -174,7 +165,18 @@ void build_backslashes_internal(lexer lex, ...)
 {
 }
 
-    
+
+value set(value x, ...)
+{
+    int total = 1;
+    foreach_arg(x, i) total++;
+    value t = allocate_table(total);
+    //sets
+    table_insert(t, x, true);    
+    foreach_arg(x, i) table_insert(t, i, true);
+    return t;
+}
+
 value set_of_strings(char *x, ...)
 {
     int total = 1;
@@ -200,18 +202,18 @@ vector lex(buffer b)
                                   ">=", ">>", ">", "%", "%=", INVALID_ADDRESS);
     
     build_backslashes(lex, a, b, f, n, r, t, v, INVALID_ADDRESS);
-    value whitespace = set_of_strings (" ", "\t", "\n", INVALID_ADDRESS);
-    u64 scan = 0, next; 
+    value whitespace = set ((value)' ',
+                            (value)'\t',
+                            (value)'\n', INVALID_ADDRESS);
+    u64 scan = 0, _; 
 
     output(print(whitespace));
     while (scan < b->length) {
-        character c = readc(lex->b, scan, next);
+        character c = readc(lex->b, scan, _);
         printf ("lex: %c\n", (char)c);
         // double get
-        while (table_get(whitespace, (value)c)) {
-            c = readc(lex->b, scan, next);
-            scan = next;
-        }
+        while (table_get(whitespace, (value)c)) 
+            c = readc(lex->b, scan, scan);
 
         // nescan one of these
         if (c == '"') scan = read_string(lex, scan);
@@ -221,7 +223,8 @@ vector lex(buffer b)
 
         u64 start = scan;
         printf("lex: %lld %lld\n", scan, start);
-        while (table_get(tokens, substring(lex->b, start, scan+8))) scan+=8;
+        while ((c = characterof(lex->b, start)), table_get(tokens, (value)c))
+            scan+=utf8_length(c);
         
         if (scan > start) {
             make_token(lex->out, start, scan, keyword, substring(lex->b, start, scan));

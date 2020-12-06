@@ -59,7 +59,9 @@ boolean iterate_internal(value m, value *index, value *k, value *v)
             u8 *b = contentsu8(s) + bytesof(biti);
             u64 len = utf8_length(*b);
             *k = (value)runei;
-            *v = substring(contents(s), biti, biti+len);
+            // should be a bitstring char not a string
+            // otherwsie (x[0]=x) if (len(x) == 1)
+            *v = (value)characterof(s, biti);
             *(u64 *)index = ((runei + 1) << 32) | (biti + len);
             return true;
         }

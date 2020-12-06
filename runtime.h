@@ -164,7 +164,21 @@ static inline value get(value v, value k)
 boolean iterate_internal(value m, value *index, value *k, value *v);
 #define foreach(__k, __v, __f)\
     for(value __k, __v, __ind = 0;iterate_internal(__f, &__ind, &__k, &__v);) 
-     
+
+typedef u32 character; 
+
+
+// we know that a small is at least a u32 and a u32 can represent
+// all utf8 codepoints
+static inline u32 characterof(buffer b, bits offset)
+{
+    u32 x;
+    u8 *p = contentsu8(b) + bytesof(offset);
+    int len = utf8_length(*p);
+    __builtin_memcpy(&x, p, bytesof(len));
+    return x;
+}
+
 
 static inline boolean equals(value a, value b)
 {
