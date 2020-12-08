@@ -89,10 +89,6 @@ vector read_toplevels(parser p, index offset, scope env) {
     vector top = 0;
     value v;
     while (scan < (p->tokens->length/sizeof(value))) {
-        printf(" toppy");        
-        output(pget(p->tokens, scan, sym(value)));
-        printf ("\n");
-        
         scan = read_decl(p, scan, env, top);
     }
     return 0;
@@ -114,6 +110,8 @@ value parse(buffer b)
 {
     parser p = malloc(sizeof(struct parser)); // xxx stdlib
     p->tokens = lex(b);
+    output(print(p->tokens));
+#if 0
     Type vt = timm("kind", sym(void));
     // set(pget(p->global, sym(types)), sym(void), vt);
     Type v = make_ptr_type(vt);
@@ -151,5 +149,6 @@ value parse(buffer b)
     define_builtin(p, sym(__builtin_va_arg), vt, allocate_vector(voidptr, voidptr));
     define_builtin(p, sym(__builtin_va_start), vt, allocate_vector(voidptr));
     read_toplevels(p, 0, p->global);
+#endif
     return 0;
 }

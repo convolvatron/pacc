@@ -45,14 +45,14 @@ static inline boolean isalpha(character x)
 }
 
 
-static inline void push_mut(elastic e, unsigned char *source, bits length)
+static inline void push_mut(elastic e, void *source, bits length)
 {
     if (e->length < e->offset + length)  {
         e->length *= 2;
         e->length += length; // meh
         e->resizer = realloc(e->resizer, e->length);
     }
-    __builtin_memcpy(e->resizer + e->offset, source, bytesof(length));
+    __builtin_memcpy(e->resizer + bytesof(e->offset), source, bytesof(length));
     e->offset += length;
 }
 
@@ -74,7 +74,8 @@ elastic allocate_elastic()
     value r = timm(sym(kind), sym(__kind),   \
                    sym(start), __start,   \
                    sym(end), __end,      \
-                   sym(value), __v);         \
+                   sym(value), __v);     \
+    output(print(r));                                   \
     push_mut(__lex, (void *)&r, bitsizeof(value));      \
     })
 
@@ -141,7 +142,7 @@ static u64 read_string(lexer lex, u64 offset)
         character c = readc(lex->b, end, end);
         if (c == '"') break;
     }
-    make_token(lex->out, offset, end, string, substring(contents(lex->b), offset, end));
+    make_token(lex->out, offset, end, string, substring(lex->b, offset, end));
     return offset;
 }
 
@@ -187,7 +188,52 @@ value set_of_strings(char *x, ...)
     foreach_arg(x, i) table_insert(t, stringify(i), true);
     return t;
 }
+
+u64 scan_operator(lexer lex, u64 start)
+{
+    // make a little dataspace for the syntax
+    static value tokens; 
+    if (!tokens) {
+        // not too hung up on distinguishing between keywords and operators?
+        tokens = set_of_strings("*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#",
+                                ":", "|", "|=", "(", ")", "[", "]", "{", "}", ";", ",", "?",
+                                "~", "--", "->", "-=", "<<", "/", "/=", "<=", "<:", "<%",
+                                ">=", ">>", ">", "%", "%=", ";", INVALID_ADDRESS);
+    }
+
+    u64 scan = start, next;
+    printf ("scan operator: %c\n", (char)characterof(lex->b, start));
+    while ((next = scan + utf8_length(characterof(lex->b, scan))),
+           table_get(tokens, substring(lex->b, start, next))) {
+        scan += next;
+    }
     
+    if (scan > start) {
+        make_token(lex->out, start, scan, keyword, substring(lex->b, start, scan));
+        return scan;
+    }
+    return start;
+}
+
+static u64 choose(lexer lex, u64 scan)
+{
+    u64 _;
+    
+    if (lex->b->length == scan) return scan;
+    
+    character c = readc(lex->b, scan, _);
+    printf ("lex top char: %c\n", (char)c);
+    
+    if (c == '"') return read_string(lex, scan);
+    if (c == '\'') return read_character_constant(lex, scan);
+    if (isalpha(c) || (c == '_')) return read_ident(lex, scan);
+    if (isdigit(c, 10)) return read_number(lex, 10, scan);
+    
+    u64 next = scan_operator(lex, scan);
+    if (next == scan) halt("lex error", c);
+    return next;
+}
+
 vector lex(buffer b)
 {
     lexer lex = malloc(sizeof(struct lexer)); // malloc?
@@ -195,47 +241,32 @@ vector lex(buffer b)
     lex->b = b;
     // sleezy workaround to avoid a linear chain...however, linear isn't
     // so bad?   (value:int next:(value:main next:(value:eof)))
-
-    value tokens = set_of_strings("*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#",
-                                  ":", "|", "|=", "(", ")", "[", "]", "{", "}", ";", ",", "?",
-                                  "~", "--", "->", "-=", "<<", "/", "/=", "<=", "<:", "<%",
-                                  ">=", ">>", ">", "%", "%=", INVALID_ADDRESS);
     
     build_backslashes(lex, a, b, f, n, r, t, v, INVALID_ADDRESS);
     value whitespace = set ((value)' ',
                             (value)'\t',
                             (value)'\n', INVALID_ADDRESS);
-    u64 scan = 0, _; 
-
-    output(print(whitespace));
+    u64 scan = 0, next; 
+    
     while (scan < b->length) {
-        character c = readc(lex->b, scan, _);
-        printf ("lex: %c\n", (char)c);
-        // double get
-        while (table_get(whitespace, (value)c)) 
-            c = readc(lex->b, scan, scan);
-
-        // nescan one of these
-        if (c == '"') scan = read_string(lex, scan);
-        if (c == '\'') scan = read_character_constant(lex, scan);
-        if (isalpha(c) || (c == '_')) scan = read_ident(lex, scan);
-        if (isdigit(c, 10)) scan = read_number(lex, 10, scan);
-
-        u64 start = scan;
-        printf("lex: %lld %lld\n", scan, start);
-        while ((c = characterof(lex->b, start)), table_get(tokens, (value)c))
-            scan+=utf8_length(c);
-        
-        if (scan > start) {
-            make_token(lex->out, start, scan, keyword, substring(lex->b, start, scan));
-        } 
+        character c = readc(lex->b, scan, next);
+        while (table_get(whitespace, (value)c)) {
+            scan = next;
+            printf("ws: %c %lld\n", (char)c, scan);
+            c = readc(lex->b, scan, next);
+        }
+        scan = choose(lex, scan);
     }
-    printf ("lex results: %llx\n", lex->out->offset);
+    printf ("lex results %lld:\n", lex->out->offset/bitsizeof(value));
     value result = allocate_table(lex->out->offset/bitsizeof(value));
 
     // should have a vector representation - once we land a little
-    for (u64 i =0; i<lex->out->offset/bitsizeof(value); i++)
-        table_insert(result, (value)i, ((value *)(lex->out->resizer))[i]);
+    for (u64 i =0; i<lex->out->offset/bitsizeof(value); i++) {
+        value v = ((value*)(lex->out->resizer))[i];
+        printf("toko %p\n", v);
+        output(print(v));
+        table_insert(result, (value)i, v);
+    }
 
     output(print(result));
     printf("\n");

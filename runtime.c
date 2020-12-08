@@ -38,13 +38,14 @@ boolean iterate_internal(value m, value *index, value *k, value *v)
     }
 
     if (tagof(m) == tag_small) {
+        u64 ri = *(u64 *)index >> 32;
         u64 i = *(u64 *)index ^ (u64)m;
         if (!i) return false;
 
-        u64 b = (u64)__builtin_ffsll(*(u64 *)index);
-        b = b-1;
-        *(u64 *)index |= b;
+        u64 b = (u64)__builtin_ffsll(i) - 1;
+        *(u64 *)index =  (*(u64 *)index |b) | ((ri +1)<<32);
         *k = (value)b;
+        *v = one;
         return true;    
     }
 

@@ -125,9 +125,9 @@ static inline value timm_internal(value trash, ...)
 
 value get_small(value v, value k);
 
-static inline buffer substring(void *base, bits start, bits end)
+static inline buffer substring(buffer b, bits start, bits end)
 {
-    return allocate_utf8(base+(start>>3), end-start);
+    return allocate_utf8(contentsu8(b)+(start>>3), bytesof(end-start));
 }
 
 static inline value get(value v, value k)
@@ -172,7 +172,7 @@ typedef u32 character;
 // all utf8 codepoints
 static inline u32 characterof(buffer b, bits offset)
 {
-    u32 x;
+    u32 x = 0;
     u8 *p = contentsu8(b) + bytesof(offset);
     int len = utf8_length(*p);
     __builtin_memcpy(&x, p, bytesof(len));

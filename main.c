@@ -15,7 +15,7 @@ int main(int argc, char **argv)
     for (int i = 0; i < sizeof(a)/sizeof(char *); i++) {
         int len = 0; 
         while (a[i][len]) len++;
-        parse(allocate_utf8((u8 *)a[i], len-1));
+        parse(allocate_utf8((u8 *)a[i], len));
     }
 }
 
