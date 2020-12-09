@@ -204,8 +204,9 @@ u64 scan_operator(lexer lex, u64 start)
     u64 scan = start, next;
     printf ("scan operator: %c\n", (char)characterof(lex->b, start));
     while ((next = scan + utf8_length(characterof(lex->b, scan))),
+           (scan < lex->b->length) && 
            table_get(tokens, substring(lex->b, start, next))) {
-        scan += next;
+        scan = next;
     }
     
     if (scan > start) {
@@ -222,7 +223,6 @@ static u64 choose(lexer lex, u64 scan)
     if (lex->b->length == scan) return scan;
     
     character c = readc(lex->b, scan, _);
-    printf ("lex top char: %c\n", (char)c);
     
     if (c == '"') return read_string(lex, scan);
     if (c == '\'') return read_character_constant(lex, scan);
@@ -252,7 +252,6 @@ vector lex(buffer b)
         character c = readc(lex->b, scan, next);
         while (table_get(whitespace, (value)c)) {
             scan = next;
-            printf("ws: %c %lld\n", (char)c, scan);
             c = readc(lex->b, scan, next);
         }
         scan = choose(lex, scan);
