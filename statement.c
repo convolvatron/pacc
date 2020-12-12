@@ -35,7 +35,7 @@ static void read_decl_or_stmt(parser p, index offset, scope env, vector list) {
         // off
         read_decl(p, offset, env, list);
     } else {
-        Node stmt = read_stmt(p, offset, env);
+        result stmt = read_statement(p, offset, env);
         //   if (stmt)
         //  push(list, stmt);
     }
@@ -46,12 +46,13 @@ static Node ast_compound_stmt(vector stmts)
     return timm("kind", sym(compound_stmt), "statments", stmts);
 }
 
-static Node read_opt_decl_or_stmt(parser p, index offset, scope env) {
+// better general optionalizer
+static result read_opt_decl_or_stmt(parser p, index offset, scope env) {
     if (next_token(p, offset, stringify(";")))
-        return zero;
+        return res(zero, offset);
     vector list = 0;
     read_decl_or_stmt(p, offset, env, list);
-    return ast_compound_stmt(list);
+    return res(ast_compound_stmt(list), offset);
 }
 
 static Node ast_if(Node cond, Node then, Node els) {
@@ -59,18 +60,18 @@ static Node ast_if(Node cond, Node then, Node els) {
 }
 
 
-static Node read_if_stmt(parser p, index offset, scope env) {
+static result read_if_stmt(parser p, index offset, scope env) {
     expect(p, offset, stringify("("));
-    Node cond = read_expr(p, offset, env);
+    result cond = read_expr(p, offset, env);
     expect(p, offset, stringify(")"));
-    Node then = read_stmt(p, offset, env);
+    result then = read_statement(p, offset, env);
     if (!next_token(p, offset, sym(else)))
-        return ast_if(cond, then, zero);
-    Node els = read_stmt(p, offset, env);
-    return ast_if(cond, then, els);
+        return res(ast_if(cond.v, then.v, zero), then.offset);
+    result els = read_statement(p, offset, env);
+    return res(ast_if(cond.v, then.v, els.v), els.offset);
 }
 
-Node read_compound_stmt(parser p, index offset, scope env)
+result read_compound_stmt(parser p, index offset, scope env)
 {
     // push_scope(p);
     vector list = 0;
@@ -79,62 +80,65 @@ Node read_compound_stmt(parser p, index offset, scope env)
             break;
         read_decl_or_stmt(p, offset, env, list);
     }
-    return ast_compound_stmt(list);
+    return res(ast_compound_stmt(list), offset);
 }
 
 
 
-static Node read_do_stmt(parser p, index offset, scope env)
+static result read_do_stmt(parser p, index offset, scope env)
 {
     buffer beg = make_label();
     buffer end = make_label();
-    Node body = read_stmt(p, offset, env);
+    result body = read_statement(p, offset, env);
     
     tuple tok = token(p, offset);
     if (!is_keyword(tok, sym(while)))
         error(p, "'while' is expected, but got %s", tok);
     expect(p, offset, stringify("("));
-    Node cond = read_expr(p, offset, env);
-    expect(p, offset++, stringify(")"));
-    expect(p, offset++, stringify(";"));
-
-    return  ast_compound_stmt(timm("begin", ast_dest(beg),
-                                   "if", ast_if(cond, ast_jump(beg), zero),
-                                   "body", body,
-                                   "end", ast_dest(end)));
+    result cond = read_expr(p, offset, env);
+    expect(p, cond.offset+1, stringify(")"));
+    expect(p, cond.offset+2, stringify(";"));
+    
+    return res(ast_compound_stmt(timm("begin", ast_dest(beg),
+                                      "if", ast_if(cond.v, ast_jump(beg), zero),
+                                      "body", body,
+                                      "end", ast_dest(end))), cond.offset+3);
 }
 
-static Node make_switch_jump(parser p, Node var, tuple c) {
+#if 0
+// wtf is going on here...is this per case? ranges?
+static Node make_switch_jump(scope env, Node var, tuple c) {
     Node cond;
-    Type int_type = pget(p->global, sym(type), sym(int)); // ?
+    Type int_type = pget(env, sym(type), sym(int));
     if (pget(c, sym(beg)) == pget(c, sym(end))) {
-        Type type_int = pget(p->global, sym(type), sym(int));
-        cond = ast_binop(p, type_int, sym(=), var, ast_int_literal(p, int_type,
-                                                                   pget(c, sym(begin))));
+        Type type_int = pget(env, sym(type), sym(int));
+        cond = ast_binop(type_int, sym(=), var, ast_int_literal(int_type,
+                                                                     pget(c, sym(begin))));
         //                                                               value_from_u64(c->beg)));
     } else {
         // [GNU] case i ... j is compiled to if (i <= cond && cond <= j) goto <label>.
         // fix lexical pointers
-        Node x = ast_binop(p, int_type, sym(>=), ast_int_literal(p, int_type, pget(c, sym(beg))), var);
-        Node y = ast_binop(p, int_type, sym(<=), var, ast_int_literal(p, int_type, pget(c, sym(end))));
-        cond = ast_binop(p, int_type, sym(logand), x, y);
+        Node x = ast_binop(int_type, sym(>=), ast_int_literal(int_type, pget(c, sym(beg))), var);
+        Node y = ast_binop(int_type, sym(<=), var, ast_int_literal(int_type, pget(c, sym(end))));
+        cond = ast_binop(int_type, sym(logand), x, y);
     }
     // not really
     return ast_if(cond, ast_jump(pget(c, sym(name))), zero);
 }
+#endif
 
-static Node read_switch_stmt(parser p, index offset, scope env)
+static result read_switch_stmt(parser p, index offset, scope env)
 {
     expect(p, offset, stringify("("));
-    Node expr = conv(p, read_expr(p, offset, env));
-    expect(p, offset, stringify(")"));
+    result expr = conv(env, read_expr(p, offset, env));
+    expect(p, expr.offset, stringify(")"));
 
     buffer end = make_label();
     // push_scope(p);
-    Node body = read_stmt(p, offset, env);
+    result body = read_statement(p, offset, env);
 
         
-    Node var = ast_var(env, pget(expr, sym(type)), make_tempname());
+    Node var = ast_var(env, pget(expr.v, sym(type)), make_tempname());
     // immutable?
     //foreach (i, v, pget(env, sym(cases)))
     //     push(v, make_switch_jump(p, var, v));
@@ -143,23 +147,23 @@ static Node read_switch_stmt(parser p, index offset, scope env)
 
     value v = timm("body", body,
                    "thing", ast_jump(d ?d : end),
-                   "cond", ast_binop(p, pget(expr, sym(type)), sym(=), var, expr),
+                   "cond", ast_binop(pget(expr.v, sym(type)), sym(=), var, expr.v),
                    "end", ast_dest(end));
         
-    return ast_compound_stmt(v);
+    return res(ast_compound_stmt(v), offset);
 }
 
-static Node read_label_tail(parser p, index offset, scope env, Node label) {
-    Node stmt = read_stmt(p, offset, env);
+static result read_label_tail(parser p, index offset, scope env, Node label) {
+    result stmt = read_statement(p, offset, env);
     vector v = 0;
     // push(v, label);
     //    if (stmt)
     //        push(v, stmt);
-    return ast_compound_stmt(v);
+    return res(ast_compound_stmt(v), stmt.offset);
 }
 
 // recurse and larvate
-static Node read_case_label(parser p, index offset, scope env, tuple tok) {
+static result read_case_label(parser p, index offset, scope env, tuple tok) {
     vector cases = pget(env, sym(cases));
     if (!cases) error(p, "stray case label");
     buffer label = make_label();
@@ -179,9 +183,9 @@ static Node read_case_label(parser p, index offset, scope env, tuple tok) {
     return read_label_tail(p, offset, env, ast_dest(label));
 }
 
-static Node read_default_label(parser p, index offset, scope env, tuple tok) {
+static result read_default_label(parser p, index offset, scope env, tuple tok) {
     expect(p, offset, stringify(":"));
-    if (pget(p->global, sym(defaultcase)))
+    if (pget(env, sym(defaultcase)))
         error(p, "duplicate default");
     value lab = make_label();
     return read_label_tail(p,
@@ -190,20 +194,20 @@ static Node read_default_label(parser p, index offset, scope env, tuple tok) {
                            ast_dest(lab));
 }
 
-static Node read_break_stmt(parser p, index offset, scope env, tuple tok) {
+static result read_break_stmt(parser p, index offset, scope env, tuple tok) {
     expect(p, offset, stringify(";"));
     value b;
     if (!(b =pget(env, sym(targets), sym(break))))
         error(p, "stray break statement");
-    return ast_jump(b);
+    return res(ast_jump(b), offset);
 }
 
-static Node read_continue_stmt(parser p, index offset, scope env, tuple tok) {
+static result read_continue_stmt(parser p, index offset, scope env, tuple tok) {
     expect(p, offset, stringify(";"));
     value lc;
     if (!(lc =pget(env, sym(targets), sym(continue))))
         error(p, "stray continue statement");
-    return ast_jump(lc);
+    return res(ast_jump(lc), offset);
 }
 
 
@@ -212,22 +216,23 @@ static Node ast_return(Node retval)
     return timm("kind", sym(return), "retval", retval);
 }
 
-static Node read_return_stmt(parser p, index offset, scope env) {
-    Node retval = read_expr(p, offset, env);
-    expect(p, offset, stringify(";"));
-    if (retval)
-        return ast_return(ast_conv(pget(env, sym(__return_type)), retval));
-    return ast_return(zero);
+static result read_return_stmt(parser p, index offset, scope env) {
+    result retval = read_expr(p, offset, env);
+    expect(p, offset, stringify(";")); // cant we genernicize this?
+    // ternary
+    if (retval.v)
+        return res(ast_return(ast_conv(pget(env, sym(__return_type)), retval.v)), offset);
+    return res(ast_return(zero), offset);
 }
 
-static Node read_goto_stmt(parser p, index offset, scope env) {
+static result read_goto_stmt(parser p, index offset, scope env) {
     if (next_token(p, offset, sym(*))) {
         // [GNU] computed goto. "goto *p" jumps to the address pointed by p.
 
         Node expr = read_cast_expr(p, offset, env);
         if (pget(expr, sym(type), sym(kind)) != sym(ptr))
             error(p, "pointer expected for computed goto, but got %s", node2s(expr));
-        return ast_computed_goto(expr);
+        return res(ast_computed_goto(expr), offset);
     }
     tuple tok = token(p, offset);
     if (!tok || (pget(tok, sym(kind)) != sym(identifier)))
@@ -236,10 +241,10 @@ static Node read_goto_stmt(parser p, index offset, scope env) {
     Node r = ast_goto(pget(tok, sym(value)));
     // why...am I keep track of the gotos? for fixup? - yes
     // push(pget(p->global, sym(gotos)), r);
-    return r;
+    return res(r, offset);
 }
 
-static Node read_label(parser p, index offset, scope env, tuple tok)
+static result read_label(parser p, index offset, scope env, tuple tok)
 {
     buffer label = pget(tok, sym(sval));
     if (pget(env, sym(labels), label))
@@ -261,53 +266,54 @@ static tuple make_case(int beg, int end, buffer label) {
     return timm("begin", beg, "end", end, "label", label);
 }
 
-static Node read_for_stmt(parser p, index offset, scope env) {
+static result read_for_stmt(parser p, index offset, scope env) {
     expect(p, offset, stringify("("));
     // jumps go to nodes
     buffer beg = make_label();
     buffer mid = make_label();
     buffer end = make_label();
     // push_scope(p);
-    Node init = read_opt_decl_or_stmt(p, offset, env);
-    Node cond = read_expr(p, offset, env);
+    result init = read_opt_decl_or_stmt(p, offset, env);
+    result cond = read_expr(p, offset, env);
     expect(p, offset, stringify(";"));
-    Node step = read_expr(p, offset, env);
+    result step = read_expr(p, offset, env);
     expect(p, offset, stringify(")"));
-    Node body = read_stmt(p, offset, env);
+    result body = read_statement(p, offset, env);
 
-    return ast_compound_stmt(timm("init", init,
-                                  "cond", cond?ast_if(cond, zero, ast_jump(end)):0,
-                                  "step", step,
-                                  "begin", ast_jump(beg),
-                                  "end", ast_dest(end)));
+    // ast jump isn't really a thing
+    return res(ast_compound_stmt(timm("init", init,
+                                      "cond", cond.v?ast_if(cond.v, zero, ast_jump(end)):0,
+                                      "step", step,
+                                      "begin", ast_jump(beg),
+                                      "end", ast_dest(end))), body.offset);
 }
 
 
 #define allocate_vector(...) true
 
-static Node read_while_stmt(parser p, index offset, scope env) {
+static result read_while_stmt(parser p, index offset, scope env) {
     expect(p, offset, stringify("("));
-    Node cond = read_expr(p, offset, env);
+    result cond = read_expr(p, offset, env);
     expect(p, offset, stringify(")"));
 
     buffer beg = make_label();
     buffer end = make_label();
     // push_scope(p);
     //   SET_JUMP_LABELS(beg, end);
-    Node body = read_stmt(p, offset, env);
+    result body = read_statement(p, offset, env);
 
 
     // why not timm here?
-    return ast_compound_stmt(timm(// "end", ast_dest(begin), // ? 
-                                  "cond", ast_if(cond, body, ast_jump(end)),
-                                  "begin", ast_jump(beg),
-                                  "end", ast_dest(end)));
+    return res(ast_compound_stmt(timm(// "end", ast_dest(begin), // ? 
+                                       "cond", ast_if(cond.v, body.v, ast_jump(end)),
+                                       "begin", ast_jump(beg),
+                                       "end", ast_dest(end))), offset);
 
 }
 
 
 // maybe index is in the semantic value?
-Node read_stmt(parser p, index offset, scope env) {
+result read_statement(parser p, index offset, scope env) {
     tuple tok = token(p, offset);
     value id = pget(tok, sym(id));
     value k = pget(tok, sym(kind));
@@ -328,7 +334,7 @@ Node read_stmt(parser p, index offset, scope env) {
     if ((k == sym(identifier)) && next_token(p, offset, stringify(":")))
         return read_label(p, offset, env, tok);
 
-    Node r = read_expr(p, offset, env);
+    result r = read_expr(p, offset, env);
     expect(p, offset, stringify(";"));
     return r;
 }

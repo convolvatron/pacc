@@ -51,9 +51,10 @@ value table_get(value t, value k)
     int tlen = table_len(b);
     int count = 0;
     value *p;
-    
-    while ((*(p = slot(b, h++)) && (count++ < tlen)))
-        if (equals(p[0],k)) return p[1];
+
+    // values are never zero
+    while ((p = slot(b, h++))[1] && (count++ < tlen))
+        if (equals(p[0], k)) return p[1];
     return 0;
 }
 

@@ -9,13 +9,11 @@ typedef value scope;
 typedef scope Type;
 typedef buffer vector;
 
-typedef struct lexer *lexer;
 typedef value tuple;
 typedef tuple Node;
 
 #define error(p, ...)       
 boolean is_keyword(tuple tok, string c);
-typedef struct lexer *lexer;
 value parse(buffer b);
 vector lex(buffer b);
 
@@ -23,20 +21,23 @@ typedef struct lexer *lexer;
 typedef struct parser *parser;
 typedef u64 index;
 
-Node conv(parser p, Node node);
-Node read_subscript_expr(parser p, index offset, scope env, Node node);
-Node read_expr(parser p, index offset, scope env);
-Node conv(parser p, Node node);
+// sadness..i guess we could put some error in here too, or. ... hoist it to
+// tspace
+typedef struct result {
+    value v;
+    u64 offset;
+} result;
 
+#define res(__v, __o) ({struct result __k = {__v, __o}; __k;})
 
+// dont..really know that we want this here? 
+result conv(scope env, result node);
 
-// mostly for namespace correlation
+result read_subscript_expr(parser p, index offset, scope env, Node node);
+result read_expr(parser p, index offset, scope env);
+
 struct parser {
     vector tokens;
-
-    scope types; // this is 
-    scope file;
-    scope global;
 };
 
 #define pget(__e, ...) pget_internal(__e, __VA_ARGS__, INVALID_ADDRESS)
@@ -50,18 +51,19 @@ static value pget_internal(void *e, ...)
 string make_label();
 
 u64 read_decl(parser p, index offset, scope env, vector block);
-Type read_declarator(parser p, index offset, scope env, buffer *rname, Type basety, vector params);
-Type read_decl_spec(parser p, index offset, scope env, string rsclass);
+result read_declarator(parser p, index offset, scope env, buffer *rname, Type basety);
+result read_decl_spec(parser p, index offset, scope env, string rsclass);
 
 
-static inline Type read_cast_type(parser p, index offset, scope env) {
+static inline result read_cast_type(parser p, index offset, scope env) {
     // DECL_CAST
-    return read_declarator(p, offset, env, zero, read_decl_spec(p, offset, env, zero), zero);
+    result r = read_decl_spec(p, offset, env, zero);
+    return read_declarator(p, r.offset, env, zero, r.v);
 }
 
 
-static Node ast_int_literal(parser p, Type ty, value val) {
-    return timm("kind", sym(literal), "type", ty, "ival", val);
+static Node ast_int_literal(Type ty, value val) {
+    return timm("kind", sym(literal), "type", ty, "value", val);
 }
 
 
@@ -104,38 +106,31 @@ static inline Type make_array_type(Type ty, int len) {
 }
 
 // location - doesn't this just come from lexland?..i guess type
-static inline Node ast_string(parser p, scope env, buffer in)
+static inline Node ast_string(scope env, buffer in)
 {
     return timm("kind", sym(literal),
                 "type", make_array_type(pget(env, sym(type), sym(char)), in->length),
                 "value", in);
 }
 
-static inline Type get_typedef(scope s, string name) {
-    //    Node node = pget(s, sym(types), name);
-    return pget(s, sym(types), name);
-    //    return (node && (pget(node, sym(kind)) == sym(typedef))) ? pget(node, sym("type")) : zero;
-}
-
-static inline boolean is_type(parser p, tuple tok)
+static inline boolean is_type(scope env, tuple tok)
 {
-    scope env = p->global; // xxx 
     value k= get(tok, sym(kind));
     value v= get(tok, sym(value));
-    if (k == sym(identifier))   return get_typedef(env, v)?true:false;
+    if (k == sym(identifier))   return toboolean(pget(env, sym(type), v));
     // lookup type
     if (k != sym(keyword))      return false;
     return false;
 }
 
 
-static Node read_stmt(parser p, index offset, scope env);
+static result read_statement(parser p, index offset, scope env);
 
-static Node ast_binop(parser p, Type ty, string kind, Node left, Node right) {
+static Node ast_binop(Type ty, string kind, Node left, Node right) {
     return timm("kind", kind, "type", ty, "left", left, "right", right);
 }
 
-Node read_compound_stmt(parser p, index offset, scope env);
+result read_compound_stmt(parser p, index offset, scope env);
 
 
 static Node ast_conv(Type totype, Node val) {
@@ -145,7 +140,7 @@ static Node ast_conv(Type totype, Node val) {
 
 #define allocate_scope(...) true
 
-Node read_assignment_expr(parser p, index offset, scope env);
+result read_assignment_expr(parser p, index offset, scope env);
 
 // we care about the ordering, so a map and a vector..
 static inline Type lookup_field(Type t, value s)
@@ -185,11 +180,12 @@ Node read_cast_expr(parser p, index offset, scope env);
 
 // these are macros so I get some traceability
 
-#define token(__p, __offset)                                  \
+// eof check
+#define token(__p, __offset)                        \
     ({value v = get(p->tokens, (value)__offset);    \
-    printf("[%s:%d]", __FUNCTION__, __LINE__);\
-    output(print(pget(v, sym(value))));       \
-    printf("\n");\
+      printf("[%s:%d:%p]", __FUNCTION__, __LINE__,v);  \
+    output(print(v));\
+    printf("\n");                                   \
     v;})
 
 #define next_token(__p, __offset, __kind) ({            \
@@ -205,4 +201,5 @@ static inline void expect(parser p, u64 offset, string id) {
 }
 
 vector read_decl_init(parser p, index offset, scope env, Type ty);
+
 

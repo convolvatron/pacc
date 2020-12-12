@@ -75,11 +75,12 @@ elastic allocate_elastic()
                    sym(start), __start,   \
                    sym(end), __end,      \
                    sym(value), __v);     \
-    output(print(r));                                   \
     push_mut(__lex, (void *)&r, bitsizeof(value));      \
     })
 
+// eof processing in readc
 #define readc(__b, __offset, __next) ({                         \
+            if (__offset >= __b->length) halt("overread");        \
             character x = characterof(__b, __offset);           \
             __next = __offset + utf8_length(x);                 \
             x;                                                  \
@@ -89,17 +90,15 @@ elastic allocate_elastic()
 // Integers and floating point numbers and different base numbers are not distinguished.
 // assume short
 static u64 read_number(lexer lex, int offset, int base) {
-    u64 result = 0, end = offset;            
-    for (;;) {
-        character c = (u32)readc(lex->b, offset, end);
-        if (isdigit(c, base)) {
-            result = result * base + digit_of(c);
-            offset = end;
-        } else {
-            make_token(lex->out, offset, end, number, (value)result);
-        }
+    u64 result = 0, end = offset, start= offset;
+    character c;
+    while (c = (u32)readc(lex->b, offset, end), isdigit(c, base)) {
+        result = result * base + digit_of(c);
+        offset = end;
     }
-    // its in the token?
+    if (offset > start) 
+        make_token(lex->out, start, offset, number, (value)result);
+
     return offset;
 }
 
@@ -202,7 +201,6 @@ u64 scan_operator(lexer lex, u64 start)
     }
 
     u64 scan = start, next;
-    printf ("scan operator: %c\n", (char)characterof(lex->b, start));
     while ((next = scan + utf8_length(characterof(lex->b, scan))),
            (scan < lex->b->length) && 
            table_get(tokens, substring(lex->b, start, next))) {
@@ -227,7 +225,7 @@ static u64 choose(lexer lex, u64 scan)
     if (c == '"') return read_string(lex, scan);
     if (c == '\'') return read_character_constant(lex, scan);
     if (isalpha(c) || (c == '_')) return read_ident(lex, scan);
-    if (isdigit(c, 10)) return read_number(lex, 10, scan);
+    if (isdigit(c, 10)) return read_number(lex, scan, 10);
     
     u64 next = scan_operator(lex, scan);
     if (next == scan) halt("lex error", c);
@@ -256,18 +254,12 @@ vector lex(buffer b)
         }
         scan = choose(lex, scan);
     }
-    printf ("lex results %lld:\n", lex->out->offset/bitsizeof(value));
     value result = allocate_table(lex->out->offset/bitsizeof(value));
 
     // should have a vector representation - once we land a little
     for (u64 i =0; i<lex->out->offset/bitsizeof(value); i++) {
         value v = ((value*)(lex->out->resizer))[i];
-        printf("toko %p\n", v);
-        output(print(v));
         table_insert(result, (value)i, v);
     }
-
-    output(print(result));
-    printf("\n");
     return result;
 }

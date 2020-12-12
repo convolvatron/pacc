@@ -94,11 +94,6 @@ vector read_toplevels(parser p, index offset, scope env) {
     return 0;
 }
 
-static void define_builtin(parser p, buffer name, Type rettype, vector paramtypes)
-{
-    ast_var(p->global, make_func_type(rettype, paramtypes), name);
-}
-
 struct numeric {value name; int length; boolean has_sign;};
 
 #define allocate_vector(...) false
@@ -110,8 +105,9 @@ value parse(buffer b)
 {
     parser p = malloc(sizeof(struct parser)); // xxx stdlib
     p->tokens = lex(b);
-    output(print(p->tokens));
-#if 0
+    //    output(print(p->tokens));
+    //    printf ("\n");
+
     Type vt = timm("kind", sym(void));
     // set(pget(p->global, sym(types)), sym(void), vt);
     Type v = make_ptr_type(vt);
@@ -138,9 +134,9 @@ value parse(buffer b)
                           sym(signed), numtypes[i].has_sign));
     }
 
-    p->global = timm(sym(types), types);
     value voidptr;
 
+#if 0
     define_builtin(p, sym(__builtin_return_address), v, voidptr);
     define_builtin(p, sym(__builtin_reg_class),
                    pget(p->global, sym(types), sym(int)),
@@ -148,7 +144,8 @@ value parse(buffer b)
     // parameter list
     define_builtin(p, sym(__builtin_va_arg), vt, allocate_vector(voidptr, voidptr));
     define_builtin(p, sym(__builtin_va_start), vt, allocate_vector(voidptr));
-    read_toplevels(p, 0, p->global);
 #endif
+    read_toplevels(p, 0, timm("types", types));
+
     return 0;
 }
