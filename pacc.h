@@ -30,9 +30,6 @@ typedef struct result {
 
 #define res(__v, __o) ({struct result __k = {__v, __o}; __k;})
 
-// dont..really know that we want this here? 
-result conv(scope env, result node);
-
 result read_subscript_expr(parser p, index offset, scope env, Node node);
 result read_expr(parser p, index offset, scope env);
 
@@ -171,8 +168,7 @@ static inline boolean is_string(Type ty) {
 
 int read_intexpr(parser p, index offset);
 
-Node read_cast_expr(parser p, index offset, scope env);
-
+result read_cast_expr(parser p, index offset, scope env);
 
 //static inline boolean next_token(parser p, string kind) {
 // this is supposed to be a catchall, but wondering if some non-deterministic

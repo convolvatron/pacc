@@ -1,7 +1,7 @@
 #include "pacc.h"
 
 
-static Node read_struct_field(parser p, index offset, Node struc) {
+static result read_struct_field(parser p, index offset, Node struc) {
     // or union?
     Type ty = pget(struc, sym(type));
     if (pget(ty, sym(kind)) != sym(struct))
@@ -13,10 +13,10 @@ static Node read_struct_field(parser p, index offset, Node struc) {
     if (!field)
         error("struct has no such field: %s", name);
     
-    return timm("kind", sym(struct_ref),
-                "type", field,
-                "struct", struc,
-                "field", pget(name, sym(value)));
+    return res(timm("kind", sym(struct_ref),
+                    "type", field,
+                    "struct", struc,
+                    "field", pget(name, sym(value))), offset);
 }
 
 static Node ast_unaryop(string kind, Type ty, Node operand) {
@@ -33,7 +33,7 @@ static Node wrap(Type t, Node node) {
     return ast_unaryop(sym(conv), t, node);
 }
 
-
+#if 0
 // later pass ? not at all?
 result conv(scope env, result node) {
     Type int_type = pget(env, sym(type), sym(int));
@@ -57,6 +57,7 @@ result conv(scope env, result node) {
             return res(ast_conv(int_type, node.v), node.offset);
     return node;
 }
+#endif
 
 // c11 6.3.1.8: usual arithmetic conversions
 static Type usual_arith_conv(Type t, Type u) {
@@ -136,7 +137,7 @@ static vector read_func_args(parser p, index offset, scope env, vector params) {
     vector args = 0; // larvate?
     int i = 0;
     while (!next_token(p, offset, stringify(")"))) {
-        result arg = conv( env, read_assignment_expr(p, offset, env));
+        result arg = read_assignment_expr(p, offset, env);
         Type ty = pget(arg.v, sym(type));
 
 #if 0        
@@ -166,113 +167,110 @@ static vector read_func_args(parser p, index offset, scope env, vector params) {
 }
 
 
-static Node read_funcall(parser p, index offset, scope env, Node fp) {
+static result read_funcall(parser p, index offset, scope env, Node fp) {
     if (pget(fp, sym(kind)) == sym(addr) && pget(fp, sym(operand), sym(kind)) == sym(funcdesg)) {
         Node desg = pget(fp, sym(operand));
         vector args = read_func_args(p, offset, env, pget(desg, sym(type), sym(parameters)));
         //        ast_funcall(Type ftype, buffer fname, vector args)
-        return timm("kind", sym(funcall),
-                    "type", pget(desg, sym(type), sym(rettype)), // rettype
-                    "name", pget(desg, sym(name)),
-                    "args", args,
-                    "ftype", pget(desg, sym(type))); // we need this why?
+        return res(timm("kind", sym(funcall),
+                        "type", pget(desg, sym(type), sym(rettype)), // rettype
+                        "name", pget(desg, sym(name)),
+                        "args", args,
+                        "ftype", pget(desg, sym(type))), // we need this why?
+                   offset);
     }
     vector args = read_func_args(p, offset, env, pget(fp, sym(type), sym(ptr), sym(parameters)));
     // this is not a separate thing    
     //    ast_funcptr_call(fp, args);
-    return timm("kind", sym(funcptr_call), "type",
-                pget(fp, sym(type), sym(ptr), sym(rettype)),
-                "fptr", fp, 
-                "args", args);
+    return res(timm("kind", sym(funcptr_call), "type",
+                    pget(fp, sym(type), sym(ptr), sym(rettype)),
+                    "fptr", fp, 
+                    "args", args), offset);
 }
 
-static Node read_postfix_expr_tail(parser p, index offset, scope env, Node node) {
+static result read_postfix_expr_tail(parser p, index offset, scope env, Node node) {
+    result r;
     if (next_token(p, offset, stringify("("))) {
         // xxx 
-        node = conv(env, res(node, 0)).v;
-        Type t = pget(node.v, sym(type));
-        if (pget(node.v, sym(kind)) != sym(ptr) || pget(t, sym(ptr), sym(kind) != sym(func)))
+        Type t = pget(node, sym(type));
+        if (pget(node, sym(kind)) != sym(ptr) || pget(t, sym(ptr), sym(kind) != sym(func)))
             error(p, "function expected, but got %s", node);
-        node = read_funcall(p, offset, env, node);
+        r = read_funcall(p, offset, env, node);
     }
     if (next_token(p, offset, stringify("["))) {
-        node = read_subscript_expr(p, offset, env, node.v);
+        r = read_subscript_expr(p, offset, env, node);
     }
     // why dont these look more like binary operators?
     if (next_token(p, offset, sym(.))) {
-        node = read_struct_field(p, offset, node);
+        r = read_struct_field(p, offset, node);
     }
     if (next_token(p, offset, sym(->))) {
-        if (pget(node, sym(type), sym(kind)) != sym(ptr))
-            error("pointer type expected, but got %s %s",
-                  ty2s(node->ty), node2s(node));
-        node = ast_unaryop(sym(deref), pget(node, sym(type), sym(ptr)), node);
-        node = read_struct_field(p, offset, node);
+        //        r = ast_unaryop(sym(deref), pget(node, sym(type), sym(ptr)), node);
+        r = read_struct_field(p, offset, node);
     }
     tuple tok = token(p, offset);
     if (next_token(p, offset, sym(inc)) || next_token(p, offset, sym(dec))) {
         string op = is_keyword(tok, sym(inc)) ? sym(post_inc) : sym(post_dec);
-        return ast_unaryop(op, pget(node, sym(type)), node);
+        return res(ast_unaryop(op, pget(node, sym(type)), node), offset);
     }
-    return node;
+    return r;
 }
 
-static Node read_unary_expr(parser p, index offset, scope env) ;
+static result read_unary_expr(parser p, index offset, scope env) ;
 
 
-Node read_cast_expr(parser p, index offset, scope env) {
+result read_cast_expr(parser p, index offset, scope env) {
     tuple tok = token(p, offset);
     if (is_keyword(tok, stringify("(")) && is_type(p, token(p, offset+1))) {
-        Type ty = read_cast_type(p, offset, env);
+        result ty = read_cast_type(p, offset, env);
         expect(p, offset + 2, stringify(")"));
         if (is_keyword(token(p, offset + 3), stringify("}"))) {
             // compound literal
             buffer name = make_label();
-            vector init = read_decl_init(p, offset, env, ty);
-            Node r = ast_var(env, ty, name);
+            vector init = read_decl_init(p, offset, env, ty.v);
+            Node r = ast_var(env, ty.v, name);
             // set(r, sym(init), init);
             return read_postfix_expr_tail(p, offset, env, r);
         }
-        return ast_unaryop(sym(cast), ty, read_cast_expr(p, offset, env));
+        return res(ast_unaryop(sym(cast), ty.v, read_cast_expr(p, offset, env).v), offset);
     }
     return read_unary_expr(p, offset, env);
 }
 
 static result read_multiplicative_expr(parser p, index offset, scope env) {
-    Node node = read_cast_expr(p, offset, env);
-
+    result node = read_cast_expr(p, offset, env);
+    result next = read_cast_expr(p, node.offset, env);
+    value n;
     // x in {*, /, %}
-    if (next_token(p, offset, sym(*)))
-        node = binop(env, sym(*), conv( env, node), conv( env, read_cast_expr(p, offset, env)));
-    else if (next_token(p, offset, sym(/)))
-        node = binop(env, sym(/), conv( env, node), conv( env, read_cast_expr(p, offset, env)));
-    else if (next_token(p, offset, sym(%)))
-        node = binop(env, sym(%), conv( env, node), conv( env, read_cast_expr(p, offset, env)));
-    return node;
+    if (next_token(p, offset, sym(*)))  n = binop(env, sym(*), node.v, next.v);
+    else if (next_token(p, offset, sym(/)))   n = binop(env, sym(/),  node.v, next.v);
+    else if (next_token(p, offset, sym(%)))   n = binop(env, sym(%),  node.v, next.v);
+    return res(n, offset);
 }
 
 static result read_additive_expr(parser p, index offset, scope env) {
-    Node node = read_multiplicative_expr(p, offset, env);
+    result node = read_multiplicative_expr(p, offset, env);
+    result next = read_multiplicative_expr(p, node.offset, env);
+    value n;
     if (next_token(p, offset, sym(+)))
-        node = binop(env, sym(+), conv( env, node), conv( env, read_multiplicative_expr(p, offset, env)));
+        n = binop(env, sym(+),  node.v , next.v);
     else if (next_token(p, offset, sym(-)))
-        node = binop(env, sym(-), conv( env, node), conv( env, read_multiplicative_expr(p, offset, env)));
+        n = binop(env, sym(-),  node.v , next.v);
     return node;
 }
 
 static result read_shift_expr(parser p, index offset, scope env) {
-    Node node = read_additive_expr(p, offset, env);
+    result node = read_additive_expr(p, offset, env);
 
     string op;
     if (next_token(p, offset, sym(<<)))
         op = sym(<<);
     else if (next_token(p, offset, sym(>>)))
         op = sym(>>);
-    else return zero;
+    else return res(zero, offset);
         
     result right = read_additive_expr(p, offset, env);
-    node = ast_binop(pget(node, sym(type)), op, conv( env, node), conv( env, right));
-    return res(node, offset);
+    return res(ast_binop(pget(node.v, sym(type)), op, node.v, right.v), offset);
 }
 
 // ordering 
@@ -280,94 +278,114 @@ static result read_relational_expr(parser p, index offset, scope env) {
     result node = read_shift_expr(p, offset, env);
     // we used to set the type to int if its not handled here...seems quite wrong
     //        value ty = pget(env, sym(type), sym(int));
-    // flatten
-    if  (next_token(p, offset, sym(<)))      return binop(env, sym(<),  conv(env, node), conv(env, read_shift_expr(p, offset, env)));
-    else if (next_token(p, offset, sym(>)))  return binop(env, sym(>),  conv(env, read_shift_expr(p, offset, env)), conv(env, node));
-    else if (next_token(p, offset, sym(<=))) return binop(env, sym(<=), conv(env, node), conv(env, read_shift_expr(env, offset, p)));
-    else if (next_token(p, offset, sym(>=))) return binop(env, sym(>=), conv(env, read_shift_expr(p, offset, env)), conv(env, node));
-    else  return node;
-
+    // flatten into a set
+    result next = read_shift_expr(p, offset, env);
+    Node n = node.v;
+    if  (next_token(p, offset, sym(<)))      n = binop(env, sym(<),  node.v, next.v);
+    else if (next_token(p, offset, sym(>)))  n = binop(env, sym(>),  next.v, node.v);
+    else if (next_token(p, offset, sym(<=))) n = binop(env, sym(<=), node.v, next.v);
+    else if (next_token(p, offset, sym(>=))) n = binop(env, sym(>=), next.v, node.v);
+    return res(n, offset);
 }
 
 static result read_equality_expr(parser p, index offset, scope env) {
-    Node node = read_relational_expr(p, offset, env);
+    result node = read_relational_expr(p, offset, env);
     Node r;
+    
+    result next = read_equality_expr(p, offset, env);
     if (next_token(p, offset, sym(==))) {
-        r = binop(p, sym(==), conv(env, node), conv(env, read_equality_expr(p, offset, env)));
+        r = binop(p, sym(==), node.v, next.v);
     } else if (next_token(p, offset, sym(!=))) {
-        r = binop(p, sym(!=), conv(env, node), conv(env, read_equality_expr(p, offset, env)));
+        r = binop(p, sym(!=), node.v, next.v);
     } else {
         return node;
     }
+    
     // ok - yes, we know this is a boolean. binop _should_ take a type? 
     // set(r, sym(type), pget(env, sym(type), sym(int)));
-    return r;
+    return res(r, offset);
 }
 
 // this is precidence....i'd rather railroad - can we do that pure?
 static result read_bitand_expr(parser p, index offset, scope env) {
-    Node node = read_equality_expr(p, offset, env);
-    while (next_token(p, offset, sym(&)))
-        node = binop(p, sym(&), conv(env, node), conv(env, read_equality_expr(p, offset, env)));
-    return node;
+    result node = read_equality_expr(p, offset, env);
+    value v = node.v;
+    while (next_token(p, offset, sym(&))){
+        result next = read_equality_expr(p, offset, env);
+        v = binop(p, sym(&), v, next.v);
+    }
+    return res(v, offset);
 }
 
 static result read_bitxor_expr(parser p, index offset, scope env) {
-    Node node = read_bitand_expr(p, offset, env);
+    result node = read_bitand_expr(p, offset, env);
+    value n = node.v;
     while (next_token(p, offset, sym(^)))
-        node = binop(p, sym(^), conv(env, node), conv(env, read_bitand_expr(p, offset, env)));
-    return node;
+        n = binop(p, sym(^), node.v, read_bitand_expr(p, offset, env).v);
+    return res(n, offset);
 }
 
 static result read_bitor_expr(parser p, index offset, scope env) {
-    Node node = read_bitxor_expr(p, offset, env);
-    while (next_token(p, offset, sym(|)))
-        node = binop(p, sym(|), conv(env, node), conv(env, read_bitxor_expr(p, offset, env)));
-    return node;
+    result node = read_bitxor_expr(p, offset, env);
+    value v = node.v;
+    while (next_token(p, offset, sym(|))) {
+        result v2 = read_bitxor_expr(p, offset, env);
+        v = binop(p, sym(|), v, v2.v);
+    }
+    return res(v, offset);
 }
 
 static result read_logand_expr(parser p, index offset, scope env) {
-    Node node = read_bitor_expr(p, offset, env);
-    while (next_token(p, offset, sym(&&)))
-        node = ast_binop(pget(env, sym(type), sym(int)), sym(&&), node, read_bitor_expr(p, offset, env));
-    return node;
+    result node = read_bitor_expr(p, offset, env);
+    value v;
+    while (next_token(p, offset, sym(&&))) {
+        result n = read_bitor_expr(p, offset, env);
+        v = n.v;
+        v = ast_binop(pget(env, sym(type), sym(int)), sym(&&), node.v, v);
+    }
+    return res(v, offset);
 }
 
+// maybe just do railyard after all
 static result read_logor_expr(parser p, index offset, scope env) {
-    Node node = read_logand_expr(p, offset, env);
-    while (next_token(p, offset, sym(||)))
-        node = ast_binop(pget(env, sym(type), sym(int)), sym(||), node, read_logand_expr(p, offset, env));
-    return node;
+    result node = read_logand_expr(p, offset, env);
+    value n = node.v;
+    while (next_token(p, offset, sym(||))) {
+        result le = read_logand_expr(p, offset, env);
+        n = ast_binop(pget(env, sym(type), sym(int)), sym(||), n, le.v);
+    }
+    return res(n, offset);
 }
 
 static result read_conditional_expr(parser p, index offset,  scope env);
 
-static result ast_ternary(Type ty, Node cond, Node then, Node els)
+static Node ast_ternary(Type ty, Node cond, Node then, Node els)
 {
     return timm("kind", sym(ternary), "cond", cond, "then", then, "else", els);
 }
 
 static result do_read_conditional_expr(parser p, index offset, scope env, Node cond) {
-    Node then = conv(env, read_expr(p, offset, env));
+    result then = read_expr(p, offset, env);
     expect(p, offset, sym(:));
-    Node els = conv(env, read_conditional_expr(p, offset, env));
+    result els = read_conditional_expr(p, offset, env);
     // [GNU] Omitting the middle operand is allowed.
-    Type t = then ? pget(then, sym(type)): pget(cond, sym(type));
-    Type u = pget(els, sym(ty));
+    Type t = then.v ? pget(then.v, sym(type)): pget(cond, sym(type));
+    Type u = pget(els.v, sym(ty));
     // C11 6.5.15p5: if both types are arithemtic type, the result
     // type is the result of the usual arithmetic conversions.
+    // type unification is a sometimes-treat
     if (is_inttype(t) && is_inttype(u)) {
         Type r = usual_arith_conv( t, u);
-        return ast_ternary(r, cond, (then ? wrap(r, then) : zero), wrap(r, els));
+        return res(ast_ternary(r, cond, (then.v ? wrap(r, then.v) : zero), wrap(r, els.v)), offset);
     }
-    return ast_ternary(u, cond, then, els);
+    return res(ast_ternary(u, cond, then.v, els.v), offset);
 }
 
 static result read_conditional_expr(parser p, index offset, scope env) {
-    Node cond = read_logor_expr(p, offset, env);
+    result cond = read_logor_expr(p, offset, env);
     if (!next_token(p, offset, sym(?)))
         return cond;
-    return do_read_conditional_expr(p, offset, env, cond);
+    return do_read_conditional_expr(p, offset, env, cond.v);
 }
 
 static string get_compound_assign_op(tuple tok) {
@@ -378,19 +396,19 @@ static string get_compound_assign_op(tuple tok) {
 
 
 result read_assignment_expr(parser p, index offset, scope env) {
-    Node node = read_logor_expr(p, offset, env);
+    result node = read_logor_expr(p, offset, env);
     tuple tok = token(p, offset);
     if (!tok) return node;
     if (is_keyword(tok, sym(?)))
-        return do_read_conditional_expr(p, offset, env, node);
+        return do_read_conditional_expr(p, node.offset, env, node.v);
     string cop = get_compound_assign_op(tok);
     if (is_keyword(tok, sym(=)) || cop) {
-        Node value = conv(env, read_assignment_expr(p, offset, env));
-        Node right = cop ? binop(p, cop, conv(env, node), value) : value;
-        Type ty = pget(node, sym(type));
+        result value = read_assignment_expr(p, offset, env);
+        Node right = cop ? binop(p, cop, node.v, value.v) : value.v;
+        Type ty = pget(node.v, sym(type));
         if (is_inttype(ty) && pget(ty, sym(kind)) != pget(right, sym(ty), sym(kind)))
             right = ast_conv(ty, right);
-        return ast_binop(ty, sym(=), node, right);
+        return res(ast_binop(ty, sym(=), node.v, right), offset);
     }
     return node;
 }
@@ -399,28 +417,28 @@ result read_assignment_expr(parser p, index offset, scope env) {
 // dont simplify this?
 result read_subscript_expr(parser p, index offset, scope env, Node node) {
     tuple tok = token(p, offset);
-    Node sub = read_expr(p, offset, env);
-    if (!sub) error(p, "subscript expected");
+    result sub = read_expr(p, offset, env);
+    if (!sub.v) error(p, "subscript expected");
     expect(p, offset, stringify("]"));
-    Node t = binop(env, sym(+), conv(env, node), conv(env, sub));
-    return ast_unaryop(sym(deref), pget(t, sym(type), sym(ptr)), t);
+    Node t = binop(env, sym(+), node, sub.v);
+    return res(ast_unaryop(sym(deref), pget(t, sym(type), sym(ptr)), t), offset);
 }
 
 
 result read_expr(parser p, index offset, scope env) {
     result node = read_assignment_expr(p, offset, env);
+    value r;
     while (next_token(p, offset, stringify(","))){
-        Node expr = read_assignment_expr(p, offset, env);
-        node = ast_binop(pget(expr, sym(type)), stringify(","), node, expr);
+        result expr = read_assignment_expr(p, offset, env);
+        r = ast_binop(pget(expr.v, sym(type)), stringify(","), node.v, expr.v);
     }
-    return node;
+    return res(r, offset);
 }
 
 
 static result read_unary_incdec(parser p, index offset, scope env, string op) {
-    Node operand = read_unary_expr(p, offset, env);
-    operand = conv(env, operand);
-    return ast_unaryop(op, pget(operand, sym(type)), operand);
+    result operand = read_unary_expr(p, offset, env);
+    return res(ast_unaryop(op, pget(operand.v, sym(type)), operand.v), operand.offset);
 }
 
 static result read_label_addr(parser p, index offset, scope env, tuple tok) {
@@ -435,62 +453,60 @@ static result read_label_addr(parser p, index offset, scope env, tuple tok) {
                   "name", pget(tok2, sym(value)));
     
     // push(pget(env, sym(gotos)), r);
-    return r;
+    return res(r, offset);
 }
 
 static result read_unary_addr(parser p, index offset, scope env) {
-    Node operand = read_cast_expr(p, offset, env);
-    if (pget(operand, sym(kind)) == sym(funcdesg))
-        return conv(env, operand);
-    return ast_unaryop(sym(addr), make_ptr_type(pget(operand, sym(type))), operand);
+    result operand = read_cast_expr(p, offset, env);
+    if (pget(operand.v, sym(kind)) == sym(funcdesg))
+        return operand;
+    return res(ast_unaryop(sym(addr), make_ptr_type(pget(operand.v, sym(type))), operand.v), offset);
 }
 
 static result read_unary_deref(parser p, index offset, scope env, tuple tok) {
-    Node operand = conv(env, read_cast_expr(p, offset, env));
-    Type ot = pget(operand, sym(type));
+    result operand = read_cast_expr(p, offset, env);
+    Type ot = pget(operand.v, sym(type));
     if (pget(ot,sym(kind)) != sym(ptr))
         error(p, "pointer type expected, but got %s", node2s(operand));
     if (pget(ot, sym(ptr), sym(kind)) == sym(func))
         return operand;
-    return ast_unaryop(sym(deref), pget(ot, sym(ptr)), operand);
+    return res(ast_unaryop(sym(deref), pget(ot, sym(ptr)), operand.v), offset);
 }
 
 static result read_unary_minus(parser p, index offset, scope env) {
-    Node expr = read_cast_expr(p, offset, env);
-    return binop(p, sym(-), conv(env, ast_int_literal(pget(expr, sym(type)), 0)), conv(env, expr));
+    result expr = read_cast_expr(p, offset, env);
+    return res(binop(p, sym(-), ast_int_literal(pget(expr.v, sym(type), 0), expr.v), expr.v), offset);
 }
 
 static result read_unary_bitnot(parser p, index offset, scope env, tuple tok) {
-    Node expr = read_cast_expr(p, offset, env);
-    expr = conv(env, expr);
-    Type et = pget(expr, sym(type));
+    result expr = read_cast_expr(p, offset, env);
+    Type et = pget(expr.v, sym(type));
     if (!is_inttype(et))
         error(p, "invalid use of ~: %s", node2s(expr));
-    return ast_unaryop(sym(~), et, expr);
+    return res(ast_unaryop(sym(~), et, expr.v), expr.offset);
 }
 
 static result read_unary_lognot(parser p, index offset, scope env) {
-    Node operand = read_cast_expr(p, offset, env);
-    operand = conv(env, operand);
-    return ast_unaryop(sym(!), pget(env, sym(type), sym(int)), operand);
+    result operand = read_cast_expr(p, offset, env);
+    return res(ast_unaryop(sym(!), pget(env, sym(type), sym(int)), operand.v),
+               operand.offset);
 }
 
 
 
 static result read_stmt_expr(parser p, index offset, scope env) {
-    Node r = read_compound_stmt(p, offset, env);
+    result r = read_compound_stmt(p, offset, env);
     expect(p, offset, stringify(")"));
     Type rtype = pget(env, sym(type), sym(void));
 
     value st;
-    if ((st = pget(r, "statements"))) {
+    if ((st = pget(r.v, "statements"))) {
         Node lastexpr = vector_peek(st);
         value v;
         if ((v = pget(lastexpr, sym(type))))
             rtype = v;
     }
-    // evert if possible
-    return allocate_scope(r, sym(type), rtype);
+    return res(allocate_scope(r, sym(type), rtype), offset);
 }
 
 // fold 
@@ -507,12 +523,12 @@ static result read_var_or_func(parser p, index offset, scope env, buffer name) {
             error(p, "undefined variable: %s", name);
         Type ty = make_func_type(pget(env, sym(type), sym(int)), 0);
         // warnt(tok, "assume returning int: %s()", name);
-        return ast_funcdesg(ty, name);
+        return res(ast_funcdesg(ty, name), offset);
     }
     // so..funcdesg is really just a variable of function type?
     if (pget(v, sym(type), sym(kind)) == sym(func))
-        return ast_funcdesg(pget(v, sym(type)), name);
-    return v;
+        return res(ast_funcdesg(pget(v, sym(type)), name), offset);
+    return res(v, offset);
 }
 
 static result read_primary_expr(parser p, index offset, scope env) {
@@ -523,18 +539,18 @@ static result read_primary_expr(parser p, index offset, scope env) {
     if (is_keyword(tok, stringify("("))) {
         if (next_token(p, offset, stringify("[")))
             return read_stmt_expr(p, offset, env);
-        Node r = read_expr(p, offset, env);
+        result r = read_expr(p, offset, env);
         expect(p, offset, stringify(")"));
         return r;
     }
-    if (k == sym(keyword)) return zero;
+    if (k == sym(keyword)) return res(k, offset);
     if (k == sym(identifier)) return read_var_or_func(p, offset, env, v);
     //  if (tok->kind == sym(number))
     //    return read_int(p, tok);
-    if (k == sym(char))  return ast_int_literal(pget(env, sym(type), sym(char)), v);
-    if (k == sym(string)) return ast_string(env, v);
+    if (k == sym(char))  return res(ast_int_literal(pget(env, sym(type), sym(char)), v), offset);
+    if (k == sym(string)) return res(ast_string(env, v), offset);
     error(p, "internal error: unknown token kind: %d", k);
-    return 0;
+    return res(zero, offset);
 }
 
 
@@ -542,25 +558,25 @@ static result read_primary_expr(parser p, index offset, scope env) {
 static result read_sizeof_operand(parser p, index offset, scope env) {
     tuple tok = get(p->tokens, (value)offset);
     if (is_keyword(tok, stringify("(")) && is_type(p, token(p, offset))) {
-        Type r = read_cast_type(p, offset, env);
+        result r = read_cast_type(p, offset, env);
 
         expect(p, offset, stringify(")"));
         return r;
     }    
-    Type ty = pget(read_unary_expr(p, offset, env), sym(type));
+    Type ty = pget(read_unary_expr(p, offset, env).v, sym(type));
     string tyk = pget(ty, sym(kind));
     // Sizeof on void or function type is GNU extension
     value size = (tyk == sym(void) || tyk == sym(func)) ?
         value_from_u64(1) : pget(ty, sym(size));
-    return ast_int_literal(pget(env, sym(type), sym(ulong)), size);
+    return res(ast_int_literal(pget(env, sym(type), sym(ulong)), size), 0);
 }
 
 // do we really .. want .. alignof?
 static result read_alignof_operand(parser p, index offset, scope env) {
     expect(p, offset, stringify("("));
-    Type ty = read_cast_type(p, offset, env);
+    result ty = read_cast_type(p, offset, env);
     expect(p, offset, stringify(")"));
-    return ast_int_literal(pget(env, sym(types), sym(ulong)),  pget(env, ty, 0));
+    return res(ast_int_literal(pget(env, sym(types), sym(ulong)),  pget(env, ty.v, 0)), 0);
 }
 
 static result read_unary_expr(parser p, index offset, scope env) {
@@ -580,6 +596,7 @@ static result read_unary_expr(parser p, index offset, scope env) {
         if (id == sym(~)) return read_unary_bitnot(p,offset,  env, tok);
         if (id == sym(!)) return read_unary_lognot(p, offset, env);
     }
-    return read_postfix_expr_tail(p, offset, env, read_primary_expr(p, offset, env));
+    result r = read_primary_expr(p, offset, env);
+    return read_postfix_expr_tail(p, r.offset, env, r.v);
 }
 

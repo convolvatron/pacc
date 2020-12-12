@@ -130,7 +130,7 @@ static Node make_switch_jump(scope env, Node var, tuple c) {
 static result read_switch_stmt(parser p, index offset, scope env)
 {
     expect(p, offset, stringify("("));
-    result expr = conv(env, read_expr(p, offset, env));
+    result expr = read_expr(p, offset, env);
     expect(p, expr.offset, stringify(")"));
 
     buffer end = make_label();
@@ -229,10 +229,10 @@ static result read_goto_stmt(parser p, index offset, scope env) {
     if (next_token(p, offset, sym(*))) {
         // [GNU] computed goto. "goto *p" jumps to the address pointed by p.
 
-        Node expr = read_cast_expr(p, offset, env);
-        if (pget(expr, sym(type), sym(kind)) != sym(ptr))
+        result expr = read_cast_expr(p, offset, env);
+        if (pget(expr.v, sym(type), sym(kind)) != sym(ptr))
             error(p, "pointer expected for computed goto, but got %s", node2s(expr));
-        return res(ast_computed_goto(expr), offset);
+        return res(ast_computed_goto(expr.v), expr.offset);
     }
     tuple tok = token(p, offset);
     if (!tok || (pget(tok, sym(kind)) != sym(identifier)))

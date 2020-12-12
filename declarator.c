@@ -13,10 +13,7 @@ static Node ast_init(Node val, Type totype) {
 }
 
 
-static result read_initializer_elem(parser p,
-                                    scope env,
-                                    Type ty,
-                                    index offset);
+// looks like a reader is (p, e, o) -> res
 
 // we can make a groupie - read_util (parser, reader)
 // syntax only please
@@ -35,8 +32,8 @@ static result read_struct_initializer(parser p,
         tok = token(p, ++offset);
         if (!tok || pget(tok, sym(kind)) != sym(identifier))
             error(p, "malformed desginated initializer: %s", tok);
-    } 
-    read_initializer_elem(p, env, offset);
+    }
+    //read_initializer_elem(p, env, offset);
     next_token(p,  ++offset, stringify(","));
     return res(0, offset);
 }
@@ -50,25 +47,24 @@ int read_intexpr(parser p, index offset) {
 }
 
 static result read_array_initializer(parser p,
-                                    scope env,
-                                    vector inits,
-                                    index offset) {
-    
+                                     scope env,
+                                     index offset)
+{
     boolean has_brace = toboolean(next_token(p, offset, stringify("{")));
-    boolean flexible = toboolean(pget(ty, sym(len)) <= 0);
     int i;
+    vector v = 0;
     
-    for (i = 0; flexible || i < u64_from_value(pget(ty, sym(len))); i++) {
+    // we were counting to match the input type
+    for (i = 0; ; i++) {
         tuple tok = token(p, offset);
         // wrapper functions?
         if (is_keyword(tok, stringify("}"))) {
-            if (!has_brace) offset--;
-            return offset;
+            return res(tok, offset);
         }
         
-        if ((is_keyword(tok, sym(.)) || is_keyword(tok, stringify("{"))) && !has_brace) {
+        if ((is_keyword(tok, sym(.)) || is_keyword(tok, stringify("{")))){
             offset--;
-            return offset;
+            return res(tok, offset);
         }
         
         if (is_keyword(tok, stringify("{"))) {
@@ -78,7 +74,7 @@ static result read_array_initializer(parser p,
             i = idx;
             expect(p, offset, stringify("}"));
         }
-        read_initializer_elem(p, env, inits, offset);
+        //        read_initializer_elem(p, env, offset);
         next_token(p, offset, stringify(","));
     }
     if (has_brace) expect(p, offset, stringify("}"));
@@ -88,7 +84,7 @@ static result read_array_initializer(parser p,
     //        set(ty, sym(len), value_from_u64(i));
     //        set(ty, sym(size), value_from_u64(u64_from_value(elemsize) * i));
     //    }
-    return offset;
+    return res(v, offset);
 }
 
 static result read_initializer_list(parser p,
@@ -102,12 +98,10 @@ static result read_initializer_list(parser p,
 
     if (is_string(ty)) {
         if (pget(tok, sym(kind)) == sym(string)) {
-            //            assign_string(p, inits, ty, v);
             return res(zero, offset);
         }
         if (is_keyword(tok, stringify("{")) && (pget(env, sym(kind)) == sym(string))) {
             tok = token(p, offset);
-            //assign_string(p, inits, ty, v);
             expect(p, offset + 1, stringify("}"));
             return res(v, offset + 1);
         }
@@ -115,14 +109,13 @@ static result read_initializer_list(parser p,
     offset--;
     string tk = pget(ty, sym(kind));
     if (tk == sym(array)) {
-        read_array_initializer(p, env, offset);
+        return read_array_initializer(p, env, offset);
     } else if (tk == sym(struct)) {
-        read_struct_initializer(p, offset, env, ty);
+        return read_struct_initializer(p, offset, env);
     } else {
         Type arraytype = make_array_type(ty, 1);
-        read_array_initializer(p, env, offset);
+        return read_array_initializer(p, env, offset);
     }
-    return offset;
 }
 
 
@@ -133,9 +126,8 @@ result read_decl_spec(parser p, index offset, scope env, string rsclass) {
     value k = pget(tok, sym(kind));
     
     if (k == sym(identifier)){
-        return result{pget(s, sym(types), name), offset+1};        
-        result def = pget(env, sym("type"), pget(tok, sym(value)));
-        if (def) return res(def, zero);
+        value def = pget(env, sym("types"), pget(tok, sym(k.v)));
+        if (def) return res(def, offset);
     }
     
     value id = pget(tok, sym(value));
@@ -183,7 +175,6 @@ static result read_rectype_def(parser p, index offset, scope env, string kind) {
         r = timm("kind", kind);
     }
 
-    tuple r = 0;
     result basetype = read_decl_spec(p, offset, env, zero);
     // seems odd
     //        if (pget(basetype, sym(kind)) == sym(struct) && next_token(p, sym(;)))
@@ -192,8 +183,8 @@ static result read_rectype_def(parser p, index offset, scope env, string kind) {
     //        }
     
     buffer name = zero;
-    result fieldtype = read_declarator(p, offset, env, &name, basetype.v, zero);
-    fieldtype = allocate_scope(fieldtype);
+    result fieldtype = read_declarator(p, offset, env, &name, basetype.v);
+    fieldtype.v = allocate_scope(fieldtype);
     
     //      if (next_token(p, stringify(":")))
     // just change to readintexpr - there were some checks
@@ -221,23 +212,6 @@ static result read_rectype_def(parser p, index offset, scope env, string kind) {
 Node read_unary_expr(parser p, scope env);
 
 #define vector_length(_x) 1
-
-static result read_initializer_elem(parser p,
-                                    scope env,
-                                    Type ty,
-                                    index offset) {
-    next_token(p, offset, sym(=));
-    if (pget(ty, sym(kind)) == sym(array) || pget(ty, sym(kind)) == sym(struct)) {
-        read_initializer_list(p, offset, env, ty);
-    } else if (next_token(p, offset, stringify("{"))) {
-        result e = read_initializer_elem(p, env, ty, offset);
-        expect(p, offset, stringify("}"));
-    } else {
-        return conv(p, read_assignment_expr(p, offset, env));
-        // ensure_assignable(ty, pget(expr, sym(type)));
-        // push(inits, ast_init(expr, ty));
-    }
-}
 
 // generic optional
 static result read_func_param(parser p, index offset, scope env, buffer *name) {
@@ -291,26 +265,26 @@ result read_declarator_params(parser p, index offset, scope env, vector types)  
     return res(zero, offset); // build vector
 }
 
-static Type read_func_param_list(parser p, index offset, scope env, Type rettype) {
+static result read_func_param_list(parser p, index offset, scope env, Type rettype) {
     // C11 6.7.6.3p10: A parameter list with just "void" specifies that
     // the function has no parameters.
     tuple tok = token(p, offset);
     if (is_keyword(tok, sym(void)) && next_token(p, offset, stringify(")")))
-        return make_func_type(rettype, zero);
+        return res(make_func_type(rettype, zero), offset);
 
     // C11 6.7.6.3p14: K&R-style un-prototyped declaration or
     // function definition having no parameters.
     // We return a type representing K&R-style declaration here.
     // If this is actually part of a declartion, the type will be fixed later.
     if (is_keyword(tok, stringify(")")))
-        return make_func_type(rettype, zero);
+        return res(make_func_type(rettype, zero), offset);
     if (next_token(p, offset, sym(...)))
         error(p2, "at least one parameter is required before \"...\"");
     if (is_type(p, token(p, offset))) {
         boolean ellipsis;
         vector paramtypes = zero;
         read_declarator_params(p, offset, env, paramtypes);
-        return make_func_type(rettype, paramtypes);
+        return res(make_func_type(rettype, paramtypes), 0);
     }
     vector paramtypes = zero;
 
@@ -318,7 +292,7 @@ static Type read_func_param_list(parser p, index offset, scope env, Type rettype
     //  for (int i = 0; i < vector_length(paramvars); i++)
     // push(paramtypes, pget(env, sym(type), sym(int)));
     
-    return make_func_type(rettype, paramtypes);
+    return res(make_func_type(rettype, paramtypes), offset);
 }
 
 static result read_declarator_tail(parser p, index offset, scope env, Type basety);
@@ -335,7 +309,7 @@ static result read_declarator_array(parser p, index offset, scope env, Type base
     result t = read_declarator_tail(p, offset, env, basety);
     if (pget(t.v, sym(kind)) == sym(func))
         error(p, "array of functions");
-    return make_array_type(t.v, len);
+    return res(make_array_type(t.v, len), offset);
 }
 
 static result read_declarator_tail(parser p, index offset, scope env, Type basety) {
@@ -349,11 +323,11 @@ static result read_declarator_tail(parser p, index offset, scope env, Type baset
 vector read_decl_init(parser p, index offset, scope env, Type ty) {
     vector r = 0;
     if (is_keyword(token(p, offset), stringify("{")) || is_string(ty)) {
-        read_initializer_list(p, offset, env, r, ty);
+        read_initializer_list(p, offset, env, r);
     } else {
-        result init = conv(p, read_assignment_expr(p, offset, env));
+        result init = read_assignment_expr(p, offset, env);
         if (is_inttype(pget(init.v, sym(type))) && pget(init.v, sym(type), sym(kind)) != pget(ty, sym(kind)))
-            init = ast_conv(ty, init.v);
+            init.v = ast_conv(ty, init.v);
         // push(r, ast_init(init, ty));
     }
     return r;
@@ -369,14 +343,14 @@ result read_declarator(parser p, index offset, scope env, buffer *rname, Type ba
         // stub is here to handle some issues with function declarations
         // and grouping
         Type stub = timm("kind", sym(stub)); // stub type
-        Type t = read_declarator(p, offset, env, rname, stub, params);
+        result t = read_declarator(p, offset, env, rname, stub);
         expect(p, offset, stringify(")"));
-        stub = read_declarator_tail(p, offset, env, basety);
+        read_declarator_tail(p, offset, env, basety);
         return t;
     }
     if (next_token(p, offset, sym(*))) {
         // where is this being denoted?
-        return read_declarator(p, offset, env, rname, make_ptr_type(basety), params);
+        return read_declarator(p, offset, env, rname, make_ptr_type(basety));
     }
     tuple tok = token(p, offset);
     if (pget(tok, sym(kind)) == sym(identifier)) {
@@ -393,17 +367,13 @@ index read_decl(parser p, index offset, scope env, vector block) {
     printf("read decl\n");
     string sclass = 0;
     int isstatic = 0;
-    Type basetype = read_decl_spec(p, offset, env, sclass);
+    result basetype = read_decl_spec(p, offset, env, sclass);
     if (next_token(p, offset, stringify(";")))
         return offset;
 
     buffer name = zero;
-    Type ty = read_declarator(p, offset, env, &name, basetype, zero);
-    // why do we care ..storage scope
-    //        if (sclass == sym(static)) {
-    //            set(ty, sym(isstatic), sym(true));
-    //        }
-    
+    result ty = read_declarator(p, offset, env, &name, basetype.v);
+
     // there was some special handling to assign a global for static locals
     
     if (sclass == sym(typedef)) {
@@ -411,10 +381,10 @@ index read_decl(parser p, index offset, scope env, vector block) {
         // no - typedefs are scoped
         // set(p->global, name, r);
     } else {
-        Node var = ast_var(env, ty, name);
+        Node var = ast_var(env, ty.v, name);
         if (next_token(p, offset, sym(=))) {
             //push(block, ast_decl(var, read_decl_init(p, env, ty)));
-        } else if (sclass != sym(extern) && pget(ty, sym(kind)) != sym(func)) {
+        } else if (sclass != sym(extern) && pget(ty.v, sym(kind)) != sym(func)) {
             //push(block, ast_decl(var, zero));
         }
     }
@@ -426,35 +396,35 @@ index read_decl(parser p, index offset, scope env, vector block) {
     return offset;
 }
 
-static Node read_func_body(parser p, index offset, scope env, Type functype, buffer fname, vector params) {
+static result read_func_body(parser p, index offset, scope env, Type functype, buffer fname, vector params) {
     // functype? what about params?
     scope s = allocate_scope(env,
                              "__func__", funcname,
                              "__FUNCTION__", funcname);  // collect them all!
 
-    Node funcname = ast_string(p, env, fname);
-    Node body = read_compound_stmt(p, offset, s);
-    return timm("kind", sym(func),
-                "type", functype,
-                "name", fname,
-                "parms", params,
-                //                "localvars", localvars,
-                "body", body);
+    Node funcname = ast_string(p, env);
+    result body = read_compound_stmt(p, offset, s);
+    return res(timm("kind", sym(func),
+                    "type", functype,
+                    "name", fname,
+                    "parms", params,
+                    //                "localvars", localvars,
+                    "body", body.v),
+               body.offset);
 }
 
-static Node read_funcdef(parser p, index offset, scope env) {
+static result read_funcdef(parser p, index offset, scope env) {
     string sclass = 0;
-    Type basetype = read_decl_spec(p, offset, env, sclass);
+    result basetype = read_decl_spec(p, offset, env, sclass);
     //    push_scope(p);
     buffer name;
     vector params = 0;
     // probably dont need to pass params
-    Type functype = read_declarator(p, offset, env, &name, basetype, params);
+    result functype = read_declarator(p, offset, env, &name, basetype. v);
     // why do we care? make sure there is a file scope
     //  set(functype->isstatic = (sclass == sym(static));
-    ast_var(env, functype, name);
+    ast_var(env, functype.v, name);
     expect(p, offset, stringify("{"));
-    Node r = read_func_body(p, offset, env, functype, name, params);
-    return r;
+    return read_func_body(p, offset, env, functype.v, name, params);
 }
 
