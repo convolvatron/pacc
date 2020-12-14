@@ -21,21 +21,13 @@ static buffer world;
 // there is still no implied ordering.
 //
 // but globally - we dont care about the implmentation here until there are
-//   user defined iterables
-
+//   user defined iterables...this isn't really so terrible, kind of
+//   hoisting the local index into the calling frame (β reduction)
 
 boolean iterate_internal(value m, value *index, value *k, value *v)
 {
     if (tagof(m) == tag_map) {
-        u64 *p = (u64 *)v;
-        *v = 0;
-        while (!*v) {
-            // we should share this 
-            value *t = (value *)contentsu8((buffer)m) + bytesof(*p);
-            *k = t[0];
-            *v = t[1];
-            *p += 128;
-        }
+        return iterate_map(m, index, k, v);
     }
 
     if (tagof(m) == tag_small) {
@@ -47,7 +39,7 @@ boolean iterate_internal(value m, value *index, value *k, value *v)
         *(u64 *)index =  (*(u64 *)index |b) | ((ri +1)<<32);
         *k = (value)b;
         *v = one;
-        return true;    
+        return true;
     }
 
     // we need the string index and the byte index. temporarily packing
@@ -70,7 +62,7 @@ boolean iterate_internal(value m, value *index, value *k, value *v)
         return false;
     }
 
-    halt("implement iterate");
+    halt("implement iterate", tagof(m));
 }
 
         
@@ -278,5 +270,5 @@ buffer print(value v)
     if (tagof(v) == tag_utf8) return v;
     if (tagof(v) == tag_large) halt("unsupported large printf support");
     if (tagof(v) == tag_small) return format_number(v, 10);
-    halt("bigoo notag\n");
+    halt("bigoo no1tag\n");
 }

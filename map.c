@@ -57,3 +57,19 @@ value table_get(value t, value k)
     return 0;
 }
 
+
+boolean iterate_map(value m, value *index, value *k, value *v)
+{
+    value *t;
+    while ((t = (value *)(contentsu8((buffer)m)  + *((u64 *)index))),
+           *index += 128,
+           t < (value *)(contentsu8((buffer)m) + bytesof(((buffer)m)->length))){
+        if (!empty_entry(t)) {
+            *k = t[0];
+            *v = t[1];
+            return true;
+        }
+    }
+    return false;        
+}
+

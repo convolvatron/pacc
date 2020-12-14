@@ -72,7 +72,7 @@ typedef u64 tag;
 #define tagof(__x) ((u64)(__x) >> tag_offset)
 
 buffer allocate(tag t, bits length);
-
+boolean iterate_map(value m, value *index, value *k, value *v);
 buffer allocate_table(int entries);
 
 static inline value stringify(char *x)
