@@ -3,9 +3,9 @@
 #define entry_size 2 // (key, value)
 extern u64 hash(value);
 
-#define empty_entry(__x) (__x[1] == 0)
-#define table_len(__t)  ((__t)->length/(2*bitsizeof(value)))
-#define slot(__t, __i)  ((value *)contents(__t) + 2*((__i)%table_len(__t)))
+#define empty_entry(__x) ((__x)[1] == 0)
+#define table_len(__t)  ((__t)->length/(entry_size*bitsizeof(value)))
+#define slot(__t, __i)  ((value *)contents(__t) + entry_size*((__i)%table_len(__t)))
 
 #define fort(__i, __t)\
     for (void **__i = contents(__t), **__end = __i+(( __t)->length>>6); __i<__end; __i+=2)
@@ -52,55 +52,8 @@ value table_get(value t, value k)
     int count = 0;
     value *p;
 
-    // values are never zero
-    while ((p = slot(b, h++))[1] && (count++ < tlen))
+    while (!empty_entry(p = slot(b, h++)) && (count++ < tlen))
         if (equals(p[0], k)) return p[1];
     return 0;
 }
 
-#define paste(__out, __fill, __source, __bits) {\
-    __builtin_memcpy((u8 *)contents(__out) + (__fill/8), __source, __bits/8); \
-   __fill += __bits;\
-}
-
-buffer print_table(value v)
-{
-    buffer b = v; 
-    buffer tags[b->length/64];
-    value *k;
-    bytes total = 0, indent = 0;
-
-    int i=0;
-    fort(k, b) {
-        if (!empty_entry(k)) {
-            buffer keyr = print(k[0]);
-            buffer valr = print(k[1]);
-            
-            u64 klen = bytesof(keyr->length);
-            if (klen > indent) indent = klen; // runes not bytes!
-            
-            total += bytesof(valr->length) + 2;
-            tags[i++] = keyr;
-            tags[i++] = valr;            
-        }
-    }
-    total += indent*(i/2);
-
-    // (apply concat tags)
-    buffer out = allocate(tag_utf8, total * 8);
-    u64 fill = 0;
-    i=0;
-    fort(k, b) {
-        if (!empty_entry(k)) {
-            paste(out, fill, contents(tags[i]), tags[i]->length);
-            for (int sp = 0; sp < indent-(tags[i]->length>>3); sp++)
-                paste(out, fill, " ", 8);
-            paste(out, fill, ":", 8);
-            i++;
-            paste(out, fill, contents(tags[i]), tags[i]->length);
-            i++;            
-            paste(out, fill, "\n", 8);
-        }
-    }
-    return out;
-}

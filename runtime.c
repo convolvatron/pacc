@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <runtime.h>
 #include <unistd.h>
+#include <nursery.h>
 
 u64 fills[tag_max];
 u64 lengths[tag_max];
@@ -135,41 +136,8 @@ buffer buffer_from_number(u64 n)
 }
 
 
-u64 hash_imm(u64 x, u64 offset)
-{
-    u64 working = x;
-    u64 out = 0, k;
-    if (x < 2) return x + 1;
-    while ((k = (__builtin_ffsll(working)))) {
-        k = k - 1;
-        out += hash_imm(k + offset, 0); 
-        working ^= (1ull<<k);
-    }
-    return out<<1;
-}
-
-// need to get 1 bits set
-// doesn't work for > 64 bits..umm, yes...up to 2^64?
-// doesn't work for < 64 bits .. we were going to assume padding?... doesn't
-// help for cstrings
-u64 hash_bitstring(u8 *x, u64 bits)
-{
-    u64 out = 0, k;
-
-    for (int offset = 0; offset < bits ; offset += bitsizeof(u64)) {
-        u64 k = ((u64 *)x)[offset>>6];
-        int total = bits - offset;
-        if (total < 64) k &= ((1<< total)-1); //endian?
-        out ^= hash_imm(k, offset);
-    }
-    // multiple words match w/ out<<1? above?
-    return out;
-}
-
-
 u64 hash(value v);
 u64 hash_map(buffer b);
-
 
 // if this is cached at the buffer level, then when does this get called?
 // only on construction - so we dont need to mux this, do we? cache
@@ -213,23 +181,29 @@ buffer format_number(value v, int base)
     return b;
 }
 
-buffer print_table(value);
-
-buffer print(value v)
-{
-    if (tagof(v) == tag_map) return print_table(v);
-    if (tagof(v) == tag_utf8) return v;
-    if (tagof(v) == tag_large) halt("unsupported large printf support");
-    if (tagof(v) == tag_small) return format_number(v, 10);
-    halt("bigoo notag\n");
-}
 
 void output(buffer b)
 {
     write(1, contents(b), b->length/8);
 }
 
-    
+// could be parameterized by a function if we get there
+// m(_k, _v)
+// _v = from
+// o(_k, _to)
+
+// could save a copy if no matches .. shrug...actually we have to because of
+// extensional identity...this does* need to be interned dude
+value replace(value m, value from, value to)
+{
+    value out = allocate_table(nzv(m));
+    foreach(k, v, m) {
+        if (equals(v, from)) v = to;
+        table_insert(out, k, v);
+    }
+    return out;
+}
+
 void runtime_init()
 {
     void *h = 0;
@@ -248,3 +222,61 @@ void runtime_init()
 }
 
 
+#define indin(__n, __i)  ((__i)<((value *) (__n)->resizer)+(__n)->offset)
+
+#define forz(__i1, __i2, __n1, __n2)                                    \
+    for (value *__i1 = (value *) __n1->resizer, *__i2 = (value *)__n2->resizer; \
+         indin(__n1, __i1) && indin(__n2, __i2);                        \
+         __n1 ++, __n2++)
+
+#define push_mut_buffer(__n, __b)\
+    push_mut(__n, contentsu8((buffer)__b), ((buffer)__b)->length)
+
+// this is not* table specific..so there..hoist .. oh, also larvation
+buffer print_value(value v)
+{
+    bytes total = 0, indent = 0;
+    
+    nursery keys = allocate_nursery(16);
+    foreach(k, _, v) {
+        buffer kr = print(k);
+        u64 klen = bytesof(kr->length);
+        // runes should be length(keyr)  - really nzv
+        if (klen > indent) indent = klen; // runes not bytes! max not mut!
+        push_mut(keys, kr, kr->length);
+    }
+
+    // so these are really something like (apply concat (map x f))
+    nursery ind = allocate_nursery(bytesof(indent));
+    for (int i =0; i < indent; i++) push_mut(ind, " ", 8);
+    string indentstring = utf8_from_nursery(ind);
+    
+    nursery values = allocate_nursery(16);
+    foreach(_, vi, v) {
+        string s = replace(print(vi), stringify("\n"), indentstring);
+        total += bytesof(s->length) + 2;
+        push_mut(values, s, s->length);
+    }
+    
+    // could pupate in target space - avoiding a copy and cementing the nursery
+    // as a concept - concat kinda needs this?
+    nursery out = allocate_nursery(total);
+    forz(k, v, keys, values)  {
+        push_mut_buffer(out, k);
+        push_mut_buffer(out, indentstring);
+        push_mut(out, ":", 8);
+        push_mut_buffer(out, v);
+        push_mut(out, "\n", 8);
+    }
+    return utf8_from_nursery(out);
+}
+
+
+buffer print(value v)
+{
+    if (tagof(v) == tag_map) return print_value(v);
+    if (tagof(v) == tag_utf8) return v;
+    if (tagof(v) == tag_large) halt("unsupported large printf support");
+    if (tagof(v) == tag_small) return format_number(v, 10);
+    halt("bigoo notag\n");
+}

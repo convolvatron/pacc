@@ -33,7 +33,7 @@ static void read_decl_or_stmt(parser p, index offset, scope env, vector list) {
     // mark_location();
     if (is_type(p, tok)) {
         // off
-        read_decl(p, offset, env, list);
+        read_declaration(p, offset, env);
     } else {
         result stmt = read_statement(p, offset, env);
         //   if (stmt)

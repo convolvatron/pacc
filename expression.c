@@ -133,7 +133,7 @@ static boolean is_poweroftwo(int x) {
     return toboolean((x <= 0) ? 0 : !(x & (x - 1)));
 }
 
-static vector read_func_args(parser p, index offset, scope env, vector params) {
+static result read_func_args(parser p, index offset, scope env, vector params) {
     vector args = 0; // larvate?
     int i = 0;
     while (!next_token(p, offset, stringify(")"))) {
@@ -163,29 +163,28 @@ static vector read_func_args(parser p, index offset, scope env, vector params) {
         if (!is_keyword(tok, stringify(",")))
             error(p, "unexpected token: '%s'", tok);
     }
-    return args;
+    return res(args, offset);
 }
 
 
 static result read_funcall(parser p, index offset, scope env, Node fp) {
     if (pget(fp, sym(kind)) == sym(addr) && pget(fp, sym(operand), sym(kind)) == sym(funcdesg)) {
         Node desg = pget(fp, sym(operand));
-        vector args = read_func_args(p, offset, env, pget(desg, sym(type), sym(parameters)));
-        //        ast_funcall(Type ftype, buffer fname, vector args)
+        result args = read_func_args(p, offset, env, pget(desg, sym(type), sym(parameters)));
         return res(timm("kind", sym(funcall),
                         "type", pget(desg, sym(type), sym(rettype)), // rettype
                         "name", pget(desg, sym(name)),
-                        "args", args,
+                        "args", args.v,
                         "ftype", pget(desg, sym(type))), // we need this why?
                    offset);
     }
-    vector args = read_func_args(p, offset, env, pget(fp, sym(type), sym(ptr), sym(parameters)));
+    result args = read_func_args(p, offset, env, pget(fp, sym(type), sym(ptr), sym(parameters)));
     // this is not a separate thing    
     //    ast_funcptr_call(fp, args);
     return res(timm("kind", sym(funcptr_call), "type",
                     pget(fp, sym(type), sym(ptr), sym(rettype)),
                     "fptr", fp, 
-                    "args", args), offset);
+                    "args", args.v), offset);
 }
 
 static result read_postfix_expr_tail(parser p, index offset, scope env, Node node) {

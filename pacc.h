@@ -1,6 +1,7 @@
 
 // goes away
 #include <runtime.h>
+#include <nursery.h>
 #include <stdio.h>
 
 // typedef struct scope *scope;
@@ -12,7 +13,9 @@ typedef buffer vector;
 typedef value tuple;
 typedef tuple Node;
 
-#define error(p, ...)       
+// on the result path - lets see if this is always safe
+#define error(p, ...) return(res(zero, 0));
+
 boolean is_keyword(tuple tok, string c);
 value parse(buffer b);
 vector lex(buffer b);
@@ -21,11 +24,12 @@ typedef struct lexer *lexer;
 typedef struct parser *parser;
 typedef u64 index;
 
-// sadness..i guess we could put some error in here too, or. ... hoist it to
-// tspace
+// hoist to tspace
 typedef struct result {
     value v;
     u64 offset;
+    value env;
+    value error;
 } result;
 
 #define res(__v, __o) ({struct result __k = {__v, __o}; __k;})
@@ -47,14 +51,15 @@ static value pget_internal(void *e, ...)
 
 string make_label();
 
-u64 read_decl(parser p, index offset, scope env, vector block);
+//result?
+result read_declaration(parser p, index offset, scope env);
 result read_declarator(parser p, index offset, scope env, buffer *rname, Type basety);
-result read_decl_spec(parser p, index offset, scope env, string rsclass);
+result read_decl_spec(parser p, index offset, scope env);
 
 
 static inline result read_cast_type(parser p, index offset, scope env) {
     // DECL_CAST
-    result r = read_decl_spec(p, offset, env, zero);
+    result r = read_decl_spec(p, offset, env);
     return read_declarator(p, r.offset, env, zero, r.v);
 }
 
@@ -190,11 +195,11 @@ result read_cast_expr(parser p, index offset, scope env);
     if (is_keyword(tok, __kind)) res = tok;              \
     res;})
 
-static inline void expect(parser p, u64 offset, string id) {
-    tuple tok = token(p, offset);
-    if (!is_keyword(tok, id))
-        error(p, "'%c' expected, but got", id, tok);
-}
+#define expect(__p, __offset, __id) {                  \
+        tuple __tok = token(__p, __offset);                 \
+        if (!is_keyword(__tok, __id))                           \
+            error(__p, "'%c' expected, but got", __id, __tok);  \
+    }
 
 vector read_decl_init(parser p, index offset, scope env, Type ty);
 

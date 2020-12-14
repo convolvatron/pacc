@@ -1,14 +1,9 @@
 // according to the immutable worlds model we should probably do utf8 as a seperate
 // pass and let the compiler worry about interleaving/scheduling the evalution
 #include "pacc.h"
-#include <stdlib.h>
 #include <stdio.h>
 
-typedef struct elastic { //ahem
-    u8 *resizer;
-    bits offset;
-    bits length;
-} *elastic;
+#define lerror(...)
 
 // should go 
 struct lexer {
@@ -18,8 +13,8 @@ struct lexer {
     value whitespace; // per-lex, right? sure, but a set please    
     value backslash_translations;
     
-    elastic r;
-    elastic out;
+    //    nursery r;
+    nursery out;
 };
 
 static inline u64 digit_of(character x)
@@ -43,28 +38,6 @@ static inline boolean isalpha(character x)
     if ((x <= 'Z') && (x >= 'A')) return true;
     return false;
 }
-
-
-static inline void push_mut(elastic e, void *source, bits length)
-{
-    if (e->length < e->offset + length)  {
-        e->length *= 2;
-        e->length += length; // meh
-        e->resizer = realloc(e->resizer, e->length);
-    }
-    __builtin_memcpy(e->resizer + bytesof(e->offset), source, bytesof(length));
-    e->offset += length;
-}
-
-elastic allocate_elastic()
-{
-    elastic e = malloc(sizeof(struct elastic));
-    e->offset = 0;
-    e->length = 128;    
-    e->resizer = malloc(e->length);
-    return e;
-}
-
 
 // assuming start fits in a small
 // do we really want to update offset here? i know we're
@@ -122,10 +95,10 @@ static u64 read_character_constant(lexer lex, u64 offset) {
             //   if (c == sym(x)) return parse_number(lex, 16);
             //   int x = digit_of(*(u8 *)contents(lex->b));
             //   if ((x >= 0) && (x <= 7)) return parse_number(lex, 8);
-            error(p, "unknown escape character: \\%c", c);
+            lerror(p, "unknown escape character: \\%c", c);
         }
     }
-    if (readc(lex->b, end, end) != '"') error(p, "unterminated character constant", lex);
+    if (readc(lex->b, end, end) != '"') lerror(p, "unterminated character constant", lex);
     make_token(lex->out, offset, end, value, (value)(u64)c);
     return end;
 }
@@ -137,7 +110,7 @@ static u64 read_string(lexer lex, u64 offset)
     for (;;) {
         // we can keep the open token on hand for just such an event
         if (offset == (u64)length(lex->b))
-            error(p, "unterminated string");
+            lerror(p, "unterminated string");
         character c = readc(lex->b, end, end);
         if (c == '"') break;
     }
@@ -235,7 +208,7 @@ static u64 choose(lexer lex, u64 scan)
 vector lex(buffer b)
 {
     lexer lex = malloc(sizeof(struct lexer)); // malloc?
-    lex->out = allocate_elastic();
+    lex->out = allocate_nursery(128);
     lex->b = b;
     // sleezy workaround to avoid a linear chain...however, linear isn't
     // so bad?   (value:int next:(value:main next:(value:eof)))

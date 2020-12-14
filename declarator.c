@@ -121,7 +121,7 @@ static result read_initializer_list(parser p,
 
 static result read_rectype_def(parser p, index offset, scope env, string kind);
 
-result read_decl_spec(parser p, index offset, scope env, string rsclass) {
+result read_decl_spec(parser p, index offset, scope env) {
     value tok = token(p, offset);
     value k = pget(tok, sym(kind));
     
@@ -175,7 +175,7 @@ static result read_rectype_def(parser p, index offset, scope env, string kind) {
         r = timm("kind", kind);
     }
 
-    result basetype = read_decl_spec(p, offset, env, zero);
+    result basetype = read_decl_spec(p, offset, env);
     // seems odd
     //        if (pget(basetype, sym(kind)) == sym(struct) && next_token(p, sym(;)))
     // push(r, timm(type, basetype));
@@ -215,8 +215,7 @@ Node read_unary_expr(parser p, scope env);
 
 // generic optional
 static result read_func_param(parser p, index offset, scope env, buffer *name) {
-    string sclass = 0;
-    result basety = read_decl_spec(p, offset, env, sclass);
+    result basety = read_decl_spec(p, offset, env);
     
     //    if (!basety.v) {
     //        // defer
@@ -363,19 +362,21 @@ result read_declarator(parser p, index offset, scope env, buffer *rname, Type ba
 
 // this has to be jiggered to include function declarations - there was
 // a scan-ahead-and-unget-tokens loop before
-index read_decl(parser p, index offset, scope env, vector block) {
+result read_declaration(parser p, index offset, scope env)
+{
     printf("read decl\n");
-    string sclass = 0;
-    int isstatic = 0;
-    result basetype = read_decl_spec(p, offset, env, sclass);
-    if (next_token(p, offset, stringify(";")))
-        return offset;
+
+    result basetype = read_decl_spec(p, offset, env);
+
+    // thats .. not valid?
+    //    if (next_token(p, offset, stringify(";")))
+    //        return offset;
 
     buffer name = zero;
     result ty = read_declarator(p, offset, env, &name, basetype.v);
 
     // there was some special handling to assign a global for static locals
-    
+    string sclass = zero;
     if (sclass == sym(typedef)) {
         Node r = timm("kind", sym(typedef), "type", ty);
         // no - typedefs are scoped
@@ -389,42 +390,38 @@ index read_decl(parser p, index offset, scope env, vector block) {
         }
     }
     
-    if (next_token(p, offset, stringify(";"))) return offset;
+    if (next_token(p, offset, stringify(";"))) return res(zero, offset);
     
     if (!next_token(p, offset, stringify(":")))
         error(p, "';' or ',' are expected, but got %s", peek());
-    return offset;
+    
+    return res(zero, offset);
 }
 
-static result read_func_body(parser p, index offset, scope env, Type functype, buffer fname, vector params) {
+static result read_func_body(parser p, index offset, scope env, Type functype, buffer fname) {
     // functype? what about params?
     scope s = allocate_scope(env,
                              "__func__", funcname,
                              "__FUNCTION__", funcname);  // collect them all!
 
     Node funcname = ast_string(p, env);
+    vector params = pget(functype, sym(params));
     result body = read_compound_stmt(p, offset, s);
     return res(timm("kind", sym(func),
                     "type", functype,
                     "name", fname,
                     "parms", params,
-                    //                "localvars", localvars,
                     "body", body.v),
                body.offset);
 }
 
 static result read_funcdef(parser p, index offset, scope env) {
-    string sclass = 0;
-    result basetype = read_decl_spec(p, offset, env, sclass);
+    result basetype = read_decl_spec(p, offset, env);
     //    push_scope(p);
     buffer name;
-    vector params = 0;
-    // probably dont need to pass params
     result functype = read_declarator(p, offset, env, &name, basetype. v);
-    // why do we care? make sure there is a file scope
-    //  set(functype->isstatic = (sclass == sym(static));
     ast_var(env, functype.v, name);
     expect(p, offset, stringify("{"));
-    return read_func_body(p, offset, env, functype.v, name, params);
+    return read_func_body(p, offset, env, functype.v, name);
 }
 

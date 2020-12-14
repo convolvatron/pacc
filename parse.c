@@ -84,21 +84,11 @@ static Type storage_class(parser p)
 }
 #endif
 
-vector read_toplevels(parser p, index offset, scope env) {
-    u64 scan;
-    vector top = 0;
-    value v;
-    while (scan < (p->tokens->length/sizeof(value))) {
-        scan = read_decl(p, scan, env, top);
-    }
-    return 0;
-}
-
-struct numeric {value name; int length; boolean has_sign;};
-
 #define allocate_vector(...) false
 
 #define slen(__x) (sizeof(__x)/sizeof(*__x))
+
+struct numeric;
 
 // just buffer -> graph please
 value parse(buffer b)
@@ -112,19 +102,19 @@ value parse(buffer b)
     // set(pget(p->global, sym(types)), sym(void), vt);
     Type v = make_ptr_type(vt);
             
-    struct numeric numtypes[] =  {{sym(boolean), 1, false},
-                                  {sym(char), 8, true},
-                                  {sym(short), 16, true},
-                                  {sym(int), 32, true},
-                                  {sym(signed), 32, true},
-                                  {sym(unsigned), 32, false},                                  
-                                  {sym(long), 64, true},
-                                  {sym(llong), 128, true},
-                                  {sym(uchar), 8, false},
-                                  {sym(ushort), 16, false},
-                                  {sym(uint), 32, false},
-                                  {sym(ulong), 64, false},
-                                  {sym(ullong), 128, false}};
+    struct {value name; int length; boolean has_sign;} numtypes[] =  {{sym(boolean),  1,   false},
+                                                                      {sym(char),     8,   true},
+                                                                      {sym(short),    16,  true},
+                                                                      {sym(int),      32,  true},
+                                                                      {sym(signed),   32,  true},
+                                                                      {sym(unsigned), 32,  false},
+                                                                      {sym(long),     64,  true},
+                                                                      {sym(llong),    128, true},
+                                                                      {sym(uchar),    8,   false},
+                                                                      {sym(ushort),   16,  false},
+                                                                      {sym(uint),     32,  false},
+                                                                      {sym(ulong),    64,  false},
+                                                                      {sym(ullong),   128, false}};
 
     value types = allocate_table(slen(numtypes));
     // typedef
@@ -145,7 +135,14 @@ value parse(buffer b)
     define_builtin(p, sym(__builtin_va_arg), vt, allocate_vector(voidptr, voidptr));
     define_builtin(p, sym(__builtin_va_start), vt, allocate_vector(voidptr));
 #endif
-    read_toplevels(p, 0, timm("types", types));
+    u64 scan = 0;
+
+    value root = timm(sym(types), types);
+    
+    while (get(p->tokens, (value)scan)) {
+        result r = read_declaration(p, scan, root);
+        scan = r.offset;
+    }
 
     return 0;
 }

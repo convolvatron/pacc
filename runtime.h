@@ -3,6 +3,7 @@ typedef void *value;
 
 #define zero ((void *)0)
 #define one ((void *)1)
+#define INVALID_ADDRESS ((void *)(-1ull))
 
 #define varg  __builtin_va_arg
 #define vlist  __builtin_va_list
@@ -30,28 +31,33 @@ typedef value boolean;
 #define bytesof(_x) ((_x) >> 3)
 #define bitsizeof(_x) (sizeof(_x)*8)
 
-#define contents(__x) ((void **)&(__x)->contents)
-#define contents64(__x) ((u64 *)&(__x)->contents)
-#define contentsu8(__x) ((u8 *)&(__x)->contents)
-#define length(__x) ((void *)&(__x)->length)
+string print(value);
 
-typedef struct buffer {
-    u64 length;
-    u64 hash; // ?  
-    u8 contents[];
-} *buffer;
-
-void runtime_init();
+static inline u64 hash_imm(u64 x, u64 offset)
+{
+    u64 working = x;
+    u64 out = 0, k;
+    if (x < 2) return x + 1;
+    while ((k = (__builtin_ffsll(working)))) {
+        k = k - 1;
+        out += hash_imm(k + offset, 0); 
+        working ^= (1ull<<k);
+    }
+    return out<<1;
+}
 
 #include <stdio.h>
-
-#define INVALID_ADDRESS ((void *)(-1ull))
 
 //deprintify
 __attribute__((noreturn)) void halt_internal(char *message, ...);
 #define halt(...) {\
     printf("halt in [%s:%s:%d]\n", __FILE__, __FUNCTION__, __LINE__); \
     halt_internal(__VA_ARGS__, INVALID_ADDRESS);}
+
+value allocate_utf8(u8 *x, u64 bytes);
+#include <buffer.h>
+
+void runtime_init();
 
 typedef u64 tag;
 
@@ -69,10 +75,6 @@ buffer allocate(tag t, bits length);
 
 buffer allocate_table(int entries);
 
-u64 hash_bitstring(u8 *x, u64 bytes);
-
-value allocate_utf8(u8 *x, u64 bytes);
-
 static inline value stringify(char *x)
 {
     int total = 0;
@@ -83,22 +85,9 @@ static inline value stringify(char *x)
 #define sym(_x) stringify(#_x)
 
 void table_insert(buffer t, value k, value v);
-
-// maybe a star?
-static inline bits utf8_length(u32 x)
-{
-    if (~x & 0x80) return 8;
-    if ((x & 0xe0) == 0xc0) return 16;
-    if ((x & 0xf0) == 0xe0) return 24;
-    if ((x & 0xf8) == 0xf0) return 32;
-    halt("invalid utf8 character");
-}
-
-buffer print(value);
-void output(buffer b);
-
 value table_get(value t, value k);
 
+void output(buffer b);
 
 static inline value timm_internal(value trash, ...)
 {
@@ -119,16 +108,8 @@ static inline value timm_internal(value trash, ...)
 
 #define timm(...) timm_internal(0, __VA_ARGS__, INVALID_ADDRESS)
 
-// ^ fort
-#define scan_buffer(__i, __t, __stride, _ty)\
-    for (void *__j = contents(__t), *__end = __j+(( __t)->length>>6); (__i = __j), (__j<__end); __j += __stride/8)
 
 value get_small(value v, value k);
-
-static inline buffer substring(buffer b, bits start, bits end)
-{
-    return allocate_utf8(contentsu8(b)+(start>>3), bytesof(end-start));
-}
 
 static inline value get(value v, value k)
 {
@@ -165,20 +146,6 @@ boolean iterate_internal(value m, value *index, value *k, value *v);
 #define foreach(__k, __v, __f)\
     for(value __k, __v, __ind = 0;iterate_internal(__f, &__ind, &__k, &__v);) 
 
-typedef u32 character; 
-
-
-// we know that a small is at least a u32 and a u32 can represent
-// all utf8 codepoints
-static inline u32 characterof(buffer b, bits offset)
-{
-    u32 x = 0;
-    u8 *p = contentsu8(b) + bytesof(offset);
-    int len = utf8_length(*p);
-    __builtin_memcpy(&x, p, bytesof(len));
-    return x;
-}
-
 
 static inline boolean equals(value a, value b)
 {
@@ -193,6 +160,14 @@ static inline boolean equals(value a, value b)
     foreach(ka, va, a) count--;
     
     return toboolean(count == 0);
+}
+
+// fix i guess
+static inline u64 nzv(value v)
+{
+    u64 count = 0;
+    foreach(_1, _2, v) count++;
+    return count;
 }
 
 
