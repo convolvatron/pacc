@@ -31,12 +31,11 @@ boolean iterate_internal(value m, value *index, value *k, value *v)
     }
 
     if (tagof(m) == tag_small) {
-        u64 ri = *(u64 *)index >> 32;
         u64 i = *(u64 *)index ^ (u64)m;
         if (!i) return false;
-
+        
         u64 b = (u64)__builtin_ffsll(i) - 1;
-        *(u64 *)index =  (*(u64 *)index |b) | ((ri +1)<<32);
+        *(u64 *)index =  (*(u64 *)index | (1<<b));
         *k = (value)b;
         *v = one;
         return true;
@@ -77,6 +76,7 @@ static boolean buffer_compare(buffer a, u8 *b, u64 length)
     return true;
 }
 
+// bytes?
 value allocate_utf8(u8 *x, u64 bytes)
 {
     value v;
@@ -179,6 +179,18 @@ void output(buffer b)
     write(1, contents(b), b->length/8);
 }
 
+void outputline_internal(void *trash, ...)
+{
+    buffer b;
+    boolean first = true;
+    foreach_arg(trash, b) {
+        if (!first) write(1, " ", 1);
+        first = false;
+        output(b);
+    }
+    write(1, "\n", 1);
+}
+
 // could be parameterized by a function if we get there
 // m(_k, _v)
 // _v = from
@@ -194,6 +206,20 @@ value replace(value m, value from, value to)
         table_insert(out, k, v);
     }
     return out;
+}
+
+// that this needs to be different than replace is quite wrong
+// also ... we cant actually replace '\n' with '    ' - oh yeah we can
+string replace_string(string m, string from, string to)
+{
+    value out = allocate_nursery(m->length);
+    for_utf8_in_string(i, m) {
+        if (equals((value)i, from))
+            push_mut(out, contents((buffer)to), ((buffer)to)->length);
+        else 
+            push_mut(out, &i, utf8_length(i));
+    }
+    return utf8_from_nursery(out);
 }
 
 void runtime_init()
@@ -214,56 +240,64 @@ void runtime_init()
 }
 
 
-#define indin(__n, __i)  ((__i)<((value *) (__n)->resizer)+(__n)->offset)
+#define indin(__n, __i)  ((__i)<(value *)(((u8 *)(__n)->resizer)+bytesof((__n)->offset)))
 
 #define forz(__i1, __i2, __n1, __n2)                                    \
     for (value *__i1 = (value *) __n1->resizer, *__i2 = (value *)__n2->resizer; \
          indin(__n1, __i1) && indin(__n2, __i2);                        \
-         __n1 ++, __n2++)
+         __i1++, __i2++)
 
 #define push_mut_buffer(__n, __b)\
     push_mut(__n, contentsu8((buffer)__b), ((buffer)__b)->length)
+
 
 // this is not* table specific..so there..hoist .. oh, also larvation
 buffer print_value(value v)
 {
     bytes total = 0, indent = 0;
-    
+
+    outputline(sym(a), sym(b), sym(c));
     nursery keys = allocate_nursery(16);
     foreach(k, _, v) {
         buffer kr = print(k);
+        outputline(sym(key), kr);
         u64 klen = bytesof(kr->length);
         // runes should be length(keyr)  - really nzv
         if (klen > indent) indent = klen; // runes not bytes! max not mut!
-        push_mut(keys, kr, kr->length);
+        push_mut(keys, &kr, bitsizeof(value));
     }
 
     // so these are really something like (apply concat (map x f))
     nursery ind = allocate_nursery(bytesof(indent));
     for (int i =0; i < indent; i++) push_mut(ind, " ", 8);
     string indentstring = utf8_from_nursery(ind);
-    
+
+    // dont need to pupate since out is a nursery also
     nursery values = allocate_nursery(16);
     foreach(_, vi, v) {
-        string s = replace(print(vi), stringify("\n"), indentstring);
+        // this is generic map replace, not string replace (?)
+        string s = replace_string(print(vi), stringify("\n"), indentstring);
         total += bytesof(s->length) + 2;
-        push_mut(values, s, s->length);
+        push_mut(values, &s, bitsizeof(value));
     }
     
     // could pupate in target space - avoiding a copy and cementing the nursery
     // as a concept - concat kinda needs this?
     nursery out = allocate_nursery(total);
     forz(k, v, keys, values)  {
-        push_mut_buffer(out, k);
+        printf ("z: %p %p\n", k, v);
+        outputline(sym(line), *k, *v);
+        push_mut_buffer(out, *k);
         push_mut_buffer(out, indentstring);
         push_mut(out, ":", 8);
-        push_mut_buffer(out, v);
+        push_mut_buffer(out, *v);
         push_mut(out, "\n", 8);
     }
     return utf8_from_nursery(out);
 }
 
 
+// using tag to drive formatting is hidden state! - we're gonna have to work that
 buffer print(value v)
 {
     if (tagof(v) == tag_map) return print_value(v);

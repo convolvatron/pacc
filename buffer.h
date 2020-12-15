@@ -42,6 +42,7 @@ static inline u64 hash_bitstring(u8 *x, u64 bits)
 typedef u32 character; 
 
 // maybe a star?
+// endian?
 static inline bits utf8_length(u32 x)
 {
     if (~x & 0x80) return 8;
@@ -61,4 +62,11 @@ static inline u32 characterof(buffer b, bits offset)
     __builtin_memcpy(&x, p, bytesof(len));
     return x;
 }
+
+
+#define for_utf8_in_string(__i, __t)                                   \
+    for (character __i =1 ; __i != 0; __i = 0)                         \
+        for (u64 __offset = 0 ; (__offset<((buffer)__t)->length) &&     \
+                 (__i = characterof(((buffer)__t), __offset));          \
+             __offset+= utf8_length(__i))
 

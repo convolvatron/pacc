@@ -33,7 +33,7 @@ static inline nursery allocate_nursery(bits size)
 
 static inline value utf8_from_nursery(nursery n)
 {
-    return allocate_utf8(n->resizer, n->offset);
+    return allocate_utf8(n->resizer, bytesof(n->offset));
 }
 
 #define fornv(__v, __n)\

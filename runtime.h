@@ -88,6 +88,8 @@ void table_insert(buffer t, value k, value v);
 value table_get(value t, value k);
 
 void output(buffer b);
+void outputline_internal(void *trash, ...);
+#define outputline(...) outputline_internal(0, __VA_ARGS__, INVALID_ADDRESS);
 
 static inline value timm_internal(value trash, ...)
 {
@@ -170,7 +172,4 @@ static inline u64 nzv(value v)
     return count;
 }
 
-
-
-
-
+buffer print_value(value v);

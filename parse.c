@@ -138,11 +138,13 @@ value parse(buffer b)
     u64 scan = 0;
 
     value root = timm(sym(types), types);
+
+    output(print(root));
     
-    while (get(p->tokens, (value)scan)) {
-        result r = read_declaration(p, scan, root);
-        scan = r.offset;
-    }
+    //    while (get(p->tokens, (value)scan)) {
+    //        result r = read_declaration(p, scan, root);
+    //        scan = r.offset;
+    //    }
 
     return 0;
 }
