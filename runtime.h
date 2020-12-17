@@ -123,15 +123,15 @@ static inline value get(value v, value k)
     if (tagof(v) == tag_small)
         return get_small(v, k);
 
-    // oh...you...
+    // oh...you...get(string)->character
     if (tagof(v) == tag_utf8) {
         // 4g runes
         buffer s = v;
-        if (tagof(k) == tag_small) return false; // xx or large
+        if (tagof(k) != tag_small) return false; // xx or large
         u64 start = 0;
         for (u64 ind=0, bit =0; ind < (u64)k;
              ind++, bit += utf8_length(*contentsu8(s)+bytesof(start)));
-        return substring(s, start, start+utf8_length(*contentsu8(s)+bytesof(start)));
+        return (value)characterof(s, start);
     }
             
     if (tagof(v) == tag_union){

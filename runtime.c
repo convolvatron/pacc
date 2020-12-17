@@ -210,14 +210,15 @@ value replace(value m, value from, value to)
 
 // that this needs to be different than replace is quite wrong
 // also ... we cant actually replace '\n' with '    ' - oh yeah we can
-string replace_string(string m, string from, string to)
+string replace_string(string m, value from, string to)
 {
     value out = allocate_nursery(m->length);
     for_utf8_in_string(i, m) {
-        if (equals((value)i, from))
+        if (equals((value)i, from)) {
             push_mut(out, contents((buffer)to), ((buffer)to)->length);
-        else 
+        } else  { 
             push_mut(out, &i, utf8_length(i));
+        }
     }
     return utf8_from_nursery(out);
 }
@@ -256,11 +257,9 @@ buffer print_value(value v)
 {
     bytes total = 0, indent = 0;
 
-    outputline(sym(a), sym(b), sym(c));
     nursery keys = allocate_nursery(16);
     foreach(k, _, v) {
         buffer kr = print(k);
-        outputline(sym(key), kr);
         u64 klen = bytesof(kr->length);
         // runes should be length(keyr)  - really nzv
         if (klen > indent) indent = klen; // runes not bytes! max not mut!
@@ -276,7 +275,7 @@ buffer print_value(value v)
     nursery values = allocate_nursery(16);
     foreach(_, vi, v) {
         // this is generic map replace, not string replace (?)
-        string s = replace_string(print(vi), stringify("\n"), indentstring);
+        string s = replace_string(print(vi), (value)'\n', indentstring);
         total += bytesof(s->length) + 2;
         push_mut(values, &s, bitsizeof(value));
     }
@@ -285,8 +284,6 @@ buffer print_value(value v)
     // as a concept - concat kinda needs this?
     nursery out = allocate_nursery(total);
     forz(k, v, keys, values)  {
-        printf ("z: %p %p\n", k, v);
-        outputline(sym(line), *k, *v);
         push_mut_buffer(out, *k);
         push_mut_buffer(out, indentstring);
         push_mut(out, ":", 8);

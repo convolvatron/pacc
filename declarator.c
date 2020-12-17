@@ -364,8 +364,6 @@ result read_declarator(parser p, index offset, scope env, buffer *rname, Type ba
 // a scan-ahead-and-unget-tokens loop before
 result read_declaration(parser p, index offset, scope env)
 {
-    printf("read decl\n");
-
     result basetype = read_decl_spec(p, offset, env);
 
     // thats .. not valid?

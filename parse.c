@@ -124,8 +124,6 @@ value parse(buffer b)
                           sym(signed), numtypes[i].has_sign));
     }
 
-    value voidptr;
-
 #if 0
     define_builtin(p, sym(__builtin_return_address), v, voidptr);
     define_builtin(p, sym(__builtin_reg_class),
