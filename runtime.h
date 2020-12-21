@@ -109,6 +109,8 @@ static inline value timm_internal(value trash, ...)
 }
 
 #define timm(...) timm_internal(0, __VA_ARGS__, INVALID_ADDRESS)
+value concat_internal(value trash, ...);
+#define concat(...) concat_internal(0, __VA_ARGS__, INVALID_ADDRESS)
 
 
 value get_small(value v, value k);

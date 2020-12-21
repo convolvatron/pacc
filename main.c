@@ -11,7 +11,7 @@ char *a[]={"int x = 58;",
 int main(int argc, char **argv)
 {
     runtime_init();
-
+    output(print_value((value)5));
     for (int i = 0; i < sizeof(a)/sizeof(char *); i++) {
         int len = 0; 
         while (a[i][len]) len++;

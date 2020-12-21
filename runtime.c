@@ -76,6 +76,15 @@ static boolean buffer_compare(buffer a, u8 *b, u64 length)
     return true;
 }
 
+value vof(u64 count, value v)
+{
+    // xxx - use vector representation
+    value t = allocate_table(count);
+    for (u64 i =0; i < count ; i++ )
+        table_insert(t, (value)count, v);
+    return t;
+}
+
 // bytes?
 value allocate_utf8(u8 *x, u64 bytes)
 {
@@ -176,7 +185,14 @@ buffer format_number(value v, int base)
 
 void output(buffer b)
 {
-    write(1, contents(b), b->length/8);
+    // ordering!
+    foreach(k, v, b) {
+        if (tagof(v) != tag_small) {
+            halt("output non-char-vector", v);
+        }
+        u64 x = (u64)v;
+        write(1, &x, bytesof(utf8_length(x)));
+    }
 }
 
 void outputline_internal(void *trash, ...)
@@ -252,6 +268,29 @@ void runtime_init()
     push_mut(__n, contentsu8((buffer)__b), ((buffer)__b)->length)
 
 
+// what does concat .. mean? only for vectors i think
+// right, for bitvectors we can take a zero-extended value and
+// coerce it to a vector
+
+value concat_internal(value trash, ...)
+{
+    int total;
+    foreach_arg(trash, b) total += nzv(b);
+    // vector rep
+    value t = allocate_table(total);
+    u64 offset = 0, o2;
+    // maybe validate that the inputs are all vector-shaped?
+    foreach_arg(trash, b) {
+        foreach(k, v, b) {
+            u64 p = (u64)k + offset;
+            if ((u64)k < o2) o2 = (u64)k;
+            table_insert(t, (value)p, b);
+        }
+        offset = o2;
+    }
+    return t;
+}
+
 // this is not* table specific..so there..hoist .. oh, also larvation
 buffer print_value(value v)
 {
@@ -266,26 +305,29 @@ buffer print_value(value v)
         push_mut(keys, &kr, bitsizeof(value));
     }
 
+    
     // so these are really something like (apply concat (map x f))
-    nursery ind = allocate_nursery(bytesof(indent));
-    for (int i =0; i < indent; i++) push_mut(ind, " ", 8);
-    string indentstring = utf8_from_nursery(ind);
+    string nested_indent = concat(stringify("\n"), vof(indent, (value)' '));
 
     // dont need to pupate since out is a nursery also
+    // if we do - this size is known from above
     nursery values = allocate_nursery(16);
     foreach(_, vi, v) {
-        // this is generic map replace, not string replace (?)
-        string s = replace_string(print(vi), (value)'\n', indentstring);
-        total += bytesof(s->length) + 2;
-        push_mut(values, &s, bitsizeof(value));
+        string svi = replace_string(print(vi), (value)'\n', nested_indent);
+        total += bytesof(svi->length) + 3;
+        push_mut(values, &svi, bitsizeof(value));
     }
     
     // could pupate in target space - avoiding a copy and cementing the nursery
     // as a concept - concat kinda needs this?
     nursery out = allocate_nursery(total);
-    forz(k, v, keys, values)  {
+    boolean first = true;
+    forz(k, v, keys, values) {
+        if (!first) 
+            push_mut_buffer(out, vof(indent - nzv(*k), (value)' '));
+
+        first = false;
         push_mut_buffer(out, *k);
-        push_mut_buffer(out, indentstring);
         push_mut(out, ":", 8);
         push_mut_buffer(out, *v);
         push_mut(out, "\n", 8);
@@ -297,6 +339,7 @@ buffer print_value(value v)
 // using tag to drive formatting is hidden state! - we're gonna have to work that
 buffer print(value v)
 {
+    if (v == zero) return sym(0);
     if (tagof(v) == tag_map) return print_value(v);
     if (tagof(v) == tag_utf8) return v;
     if (tagof(v) == tag_large) halt("unsupported large printf support");
