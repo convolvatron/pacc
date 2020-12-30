@@ -1,7 +1,8 @@
 
-# parse.o toc.o scope.o
+# toc.o scope.o
+# expression.o
 
-OBJ =  main.o map.o lex.o parse.o runtime.o statement.o expression.o declarator.o
+OBJ =  main.o map.o lex.o parse.o runtime.o statement.o declarator.o rule_expression.o
 
 #clang on free
 pacc: $(OBJ) 
