@@ -12,8 +12,6 @@ void errorf(void *x, char *fmt, ...);
 
 boolean is_keyword(tuple tok, string x)
 {
-    printf("isk %d %p\n", (get(tok, sym(kind)) == sym(keyword)),
-           (get(tok, sym(value))));
     return toboolean((get(tok, sym(kind)) == sym(keyword)) &&
                      (get(tok, sym("value")) == x));
 }
@@ -136,13 +134,12 @@ value parse(buffer b)
     u64 scan = 0;
 
     value root = timm(sym(types), types);
+    outputline(print(root));
 
-    output(print(root));
-    
-    //    while (get(p->tokens, (value)scan)) {
-    //        result r = read_declaration(p, scan, root);
-    //        scan = r.offset;
-    //    }
+    while (get(p->tokens, (value)scan)) {
+        result r = read_declaration(p, scan, root);
+        scan = r.offset;
+    }
 
     return 0;
 }

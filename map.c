@@ -35,7 +35,9 @@ void table_insert(buffer b, value k, value v)
     int count = 0; // really shouldn't happen
     for (u64 hv = hash(k); count < table_len(b) ;hv++) {
         value *s = slot(b, hv);
-        if ((s[0] == k) || empty_entry(s)){
+        // no muts here!! we're allowing zero because its convenient - 
+        if (s[0] && s[1] && equals(s[0], k)) halt("larval table overwrite");
+        if (empty_entry(s)){
             s[0] = k;            
             s[1] = v;
             return;
@@ -54,6 +56,7 @@ value table_get(value t, value k)
 
     while (!empty_entry(p = slot(b, h++)) && (count++ < tlen))
         if (equals(p[0], k)) return p[1];
+    outputline(sym(get_fail), print(k));
     return 0;
 }
 

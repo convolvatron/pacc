@@ -5,7 +5,7 @@ static result read_struct_field(parser p, index offset, Node struc) {
     // or union?
     Type ty = pget(struc, sym(type));
     if (pget(ty, sym(kind)) != sym(struct))
-        error("struct expected, but got %s", node2s(struc));
+        error("struct expected, but got %s", struc);
     tuple name = token(p, offset);
     if (pget(name, sym(kind)) != sym(identifier))
         error("field name expected, but got %s", name);
@@ -161,7 +161,7 @@ static result read_func_args(parser p, index offset, scope env, vector params) {
         tuple tok = token(p, offset);
         if (is_keyword(tok, stringify(")"))) break;
         if (!is_keyword(tok, stringify(",")))
-            error(p, "unexpected token: '%s'", tok);
+            error("unexpected token: '%s'", tok);
     }
     return res(args, offset);
 }
@@ -193,7 +193,7 @@ static result read_postfix_expr_tail(parser p, index offset, scope env, Node nod
         // xxx 
         Type t = pget(node, sym(type));
         if (pget(node, sym(kind)) != sym(ptr) || pget(t, sym(ptr), sym(kind) != sym(func)))
-            error(p, "function expected, but got %s", node);
+            error("function expected, but got %s", node);
         r = read_funcall(p, offset, env, node);
     }
     if (next_token(p, offset, stringify("["))) {
@@ -226,7 +226,7 @@ result read_cast_expr(parser p, index offset, scope env) {
         if (is_keyword(token(p, offset + 3), stringify("}"))) {
             // compound literal
             buffer name = make_label();
-            vector init = read_decl_init(p, offset, env, ty.v);
+            vector init; //  = read_decl_init(p, offset, env, ty.v);
             Node r = ast_var(env, ty.v, name);
             // set(r, sym(init), init);
             return read_postfix_expr_tail(p, offset, env, r);
@@ -417,7 +417,7 @@ result read_assignment_expr(parser p, index offset, scope env) {
 result read_subscript_expr(parser p, index offset, scope env, Node node) {
     tuple tok = token(p, offset);
     result sub = read_expr(p, offset, env);
-    if (!sub.v) error(p, "subscript expected");
+    if (!sub.v) error("subscript expected");
     expect(p, offset, stringify("]"));
     Node t = binop(env, sym(+), node, sub.v);
     return res(ast_unaryop(sym(deref), pget(t, sym(type), sym(ptr)), t), offset);
@@ -445,7 +445,7 @@ static result read_label_addr(parser p, index offset, scope env, tuple tok) {
     // with unary "&&" operator followed by a label name.
     tuple tok2 = token(p, offset);
     if (pget(tok2, sym(kind)) != sym(identifier))
-        error(p, "label name expected after &&, but got %s", tok2);
+        error("label name expected after &&, but got %s", tok2);
     // type void
     Node r = timm("kind", sym(label_addr), "type",
                   make_ptr_type(pget(env, sym(type), sym(void))),
@@ -466,7 +466,7 @@ static result read_unary_deref(parser p, index offset, scope env, tuple tok) {
     result operand = read_cast_expr(p, offset, env);
     Type ot = pget(operand.v, sym(type));
     if (pget(ot,sym(kind)) != sym(ptr))
-        error(p, "pointer type expected, but got %s", node2s(operand));
+        error("pointer type expected, but got %s", node2s(operand));
     if (pget(ot, sym(ptr), sym(kind)) == sym(func))
         return operand;
     return res(ast_unaryop(sym(deref), pget(ot, sym(ptr)), operand.v), offset);
@@ -481,7 +481,7 @@ static result read_unary_bitnot(parser p, index offset, scope env, tuple tok) {
     result expr = read_cast_expr(p, offset, env);
     Type et = pget(expr.v, sym(type));
     if (!is_inttype(et))
-        error(p, "invalid use of ~: %s", node2s(expr));
+        error("invalid use of ~: %s", node2s(expr));
     return res(ast_unaryop(sym(~), et, expr.v), expr.offset);
 }
 
@@ -519,7 +519,7 @@ static result read_var_or_func(parser p, index offset, scope env, buffer name) {
     if (!v) {
         tuple tok = token(p, offset);
         if (!is_keyword(tok, stringify("(")))
-            error(p, "undefined variable: %s", name);
+            error("undefined variable: %s", name);
         Type ty = make_func_type(pget(env, sym(type), sym(int)), 0);
         // warnt(tok, "assume returning int: %s()", name);
         return res(ast_funcdesg(ty, name), offset);
@@ -548,7 +548,7 @@ static result read_primary_expr(parser p, index offset, scope env) {
     //    return read_int(p, tok);
     if (k == sym(char))  return res(ast_int_literal(pget(env, sym(type), sym(char)), v), offset);
     if (k == sym(string)) return res(ast_string(env, v), offset);
-    error(p, "internal error: unknown token kind: %d", k);
+    error("internal error: unknown token kind: %d", k);
     return res(zero, offset);
 }
 

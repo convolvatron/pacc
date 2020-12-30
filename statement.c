@@ -10,8 +10,6 @@ static Node ast_computed_goto(Node expr) {
     return timm("kind", sym(computed_goto), "operand", expr);
 }
 
-
-
 static Node ast_jump(buffer label)
 {
     return timm("kind", sym(goto), "label", label);
@@ -93,7 +91,7 @@ static result read_do_stmt(parser p, index offset, scope env)
     
     tuple tok = token(p, offset);
     if (!is_keyword(tok, sym(while)))
-        error(p, "'while' is expected, but got %s", tok);
+        error("'while' is expected, but got %s", tok);
     expect(p, offset, stringify("("));
     result cond = read_expr(p, offset, env);
     expect(p, cond.offset+1, stringify(")"));
@@ -165,14 +163,14 @@ static result read_label_tail(parser p, index offset, scope env, Node label) {
 // recurse and larvate
 static result read_case_label(parser p, index offset, scope env, tuple tok) {
     vector cases = pget(env, sym(cases));
-    if (!cases) error(p, "stray case label");
+    if (!cases) error("stray case label");
     buffer label = make_label();
     int beg = read_intexpr(p, offset);
     if (next_token(p, offset, sym(...))) {
         int end = read_intexpr(p, offset);
         expect(p, offset, stringify(":"));
         if (beg > end)
-            error(p, "case region is not in correct order: %d ... %d", beg, end);
+            error("case region is not in correct order: %d ... %d", beg, end);
         // push(cases, make_case(beg, end, label));
     } else {
         expect(p, offset, stringify(":"));
@@ -185,8 +183,8 @@ static result read_case_label(parser p, index offset, scope env, tuple tok) {
 
 static result read_default_label(parser p, index offset, scope env, tuple tok) {
     expect(p, offset, stringify(":"));
-    if (pget(env, sym(defaultcase)))
-        error(p, "duplicate default");
+    //    if (pget(env, sym(defaultcase)))
+    //        error("duplicate default");
     value lab = make_label();
     return read_label_tail(p,
                            offset, 
@@ -198,7 +196,7 @@ static result read_break_stmt(parser p, index offset, scope env, tuple tok) {
     expect(p, offset, stringify(";"));
     value b;
     if (!(b =pget(env, sym(targets), sym(break))))
-        error(p, "stray break statement");
+        error("stray break statement");
     return res(ast_jump(b), offset);
 }
 
@@ -206,7 +204,7 @@ static result read_continue_stmt(parser p, index offset, scope env, tuple tok) {
     expect(p, offset, stringify(";"));
     value lc;
     if (!(lc =pget(env, sym(targets), sym(continue))))
-        error(p, "stray continue statement");
+        error("stray continue statement");
     return res(ast_jump(lc), offset);
 }
 
@@ -231,12 +229,12 @@ static result read_goto_stmt(parser p, index offset, scope env) {
 
         result expr = read_cast_expr(p, offset, env);
         if (pget(expr.v, sym(type), sym(kind)) != sym(ptr))
-            error(p, "pointer expected for computed goto, but got %s", node2s(expr));
+            error("pointer expected for computed goto, but got %s", node2s(expr));
         return res(ast_computed_goto(expr.v), expr.offset);
     }
     tuple tok = token(p, offset);
     if (!tok || (pget(tok, sym(kind)) != sym(identifier)))
-        error(p, "identifier expected, but got", tok);
+        error("identifier expected, but got", tok);
     expect(p, offset, stringify(";"));
     Node r = ast_goto(pget(tok, sym(value)));
     // why...am I keep track of the gotos? for fixup? - yes
@@ -248,7 +246,7 @@ static result read_label(parser p, index offset, scope env, tuple tok)
 {
     buffer label = pget(tok, sym(sval));
     if (pget(env, sym(labels), label))
-        error(p, "duplicate label: %s", tok);
+        error("duplicate label: %s", tok);
     Node r = timm("kind", sym(label), "name", label);
     //    xxx - update - set(pget(p->global, sym(labels)), sym(label), r);
     return read_label_tail(p, offset, env, r);

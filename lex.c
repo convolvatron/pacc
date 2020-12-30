@@ -168,7 +168,7 @@ u64 scan_operator(lexer lex, u64 start)
     if (!tokens) {
         // not too hung up on distinguishing between keywords and operators?
         tokens = set_of_strings("*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#",
-                                ":", "|", "|=", "(", ")", "[", "]", "{", "}", ";", ",", "?",
+                                ":", "|", "|=", "(", ")", "[", "]", "{", "}", ",", "?",
                                 "~", "--", "->", "-=", "<<", "/", "/=", "<=", "<:", "<%",
                                 ">=", ">>", ">", "%", "%=", ";", INVALID_ADDRESS);
     }

@@ -13,8 +13,7 @@ typedef buffer vector;
 typedef value tuple;
 typedef tuple Node;
 
-// on the result path - lets see if this is always safe
-#define error(p, ...) return(res(zero, 0));
+#define error(f, ...) ({result r = res(stringify(f), 0); r.success=false; r;})
 
 boolean is_keyword(tuple tok, string c);
 value parse(buffer b);
@@ -26,13 +25,13 @@ typedef u64 index;
 
 // hoist to tspace
 typedef struct result {
+    boolean success;
     value v;
     u64 offset;
     value env;
-    value error;
 } result;
 
-#define res(__v, __o) ({struct result __k = {__v, __o}; __k;})
+#define res(__v, __o) ({struct result __k = {true, __v, __o, 0}; __k;})
 
 result read_subscript_expr(parser p, index offset, scope env, Node node);
 result read_expr(parser p, index offset, scope env);
@@ -53,14 +52,14 @@ string make_label();
 
 //result?
 result read_declaration(parser p, index offset, scope env);
-result read_declarator(parser p, index offset, scope env, buffer *rname, Type basety);
+result read_declarator(parser p, index offset, scope env, Type basety);
 result read_decl_spec(parser p, index offset, scope env);
 
 
 static inline result read_cast_type(parser p, index offset, scope env) {
     // DECL_CAST
     result r = read_decl_spec(p, offset, env);
-    return read_declarator(p, r.offset, env, zero, r.v);
+    return read_declarator(p, r.offset, env, r.v);
 }
 
 
@@ -184,9 +183,8 @@ result read_cast_expr(parser p, index offset, scope env);
 // eof check
 #define token(__p, __offset)                        \
     ({value v = get(p->tokens, (value)__offset);    \
-      printf("[%s:%d:%p]", __FUNCTION__, __LINE__,v);  \
-    output(print(v));\
-    printf("\n");                                   \
+      printf("[%s:%d:%s %lld)]\n", __FILE__, __LINE__,__FUNCTION__, __offset); \
+    outputline(print(v));\
     v;})
 
 #define next_token(__p, __offset, __kind) ({            \
@@ -198,7 +196,7 @@ result read_cast_expr(parser p, index offset, scope env);
 #define expect(__p, __offset, __id) {                  \
         tuple __tok = token(__p, __offset);                 \
         if (!is_keyword(__tok, __id))                           \
-            error(__p, "'%c' expected, but got", __id, __tok);  \
+            return error("'%c' expected, but got", __id, __tok);  \
     }
 
 vector read_decl_init(parser p, index offset, scope env, Type ty);

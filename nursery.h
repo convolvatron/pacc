@@ -37,5 +37,33 @@ static inline value utf8_from_nursery(nursery n)
 }
 
 #define fornv(__v, __n)\
-    for (value *__v = __n->resizer; __v  < __n->resizer + n->fill; __v ++)
+    for (value *__v = (value *)__n->resizer; __v  < ((value *)(__n->resizer + bytesof(n->offset))); __v ++)
+
+// vector rep
+static inline value vector_from_nursery(nursery n)
+{
+    value t = allocate_table(n->offset/bitsizeof(value));
+    u64 count = 0;
+    fornv(i, n) table_insert(t, (value)(count++), i);
+    return allocate_utf8(n->resizer, bytesof(n->offset));
+}
+
+
+#define indin(__n, __i)  ((__i)<(value *)(((u8 *)(__n)->resizer)+bytesof((__n)->offset)))
+
+#define forz(__i1, __i2, __n1, __n2)                                    \
+    for (value *__i1 = (value *) __n1->resizer, *__i2 = (value *)__n2->resizer; \
+         indin(__n1, __i1) && indin(__n2, __i2);                        \
+         __i1++, __i2++)
+
+#define push_mut_buffer(__n, __b)\
+    push_mut(__n, contentsu8((buffer)__b), ((buffer)__b)->length)
+
+// since these are usually small...ordered iteration!
+#define push_mut_vector(__n, __b)\
+    foreach(_k, _v, __b) {\
+      if (tagof(_v) != tag_small) halt("implement push_kut_vector *");\
+      push_mut(__n, &_v, utf8_length((u32)_v));       \
+    }
+
 

@@ -81,7 +81,7 @@ value vof(u64 count, value v)
     // xxx - use vector representation
     value t = allocate_table(count);
     for (u64 i =0; i < count ; i++ )
-        table_insert(t, (value)count, v);
+        table_insert(t, (value)i, v);
     return t;
 }
 
@@ -226,12 +226,14 @@ value replace(value m, value from, value to)
 
 // that this needs to be different than replace is quite wrong
 // also ... we cant actually replace '\n' with '    ' - oh yeah we can
+// should be string->string
 string replace_string(string m, value from, string to)
 {
     value out = allocate_nursery(m->length);
     for_utf8_in_string(i, m) {
         if (equals((value)i, from)) {
-            push_mut(out, contents((buffer)to), ((buffer)to)->length);
+            //            if (tagof(to) != tag_utf8) halt("zorn");
+            push_mut_vector(out, to);
         } else  { 
             push_mut(out, &i, utf8_length(i));
         }
@@ -256,18 +258,6 @@ void runtime_init()
     __builtin_memset(contents(world), 0, world_length * sizeof(value));
 }
 
-
-#define indin(__n, __i)  ((__i)<(value *)(((u8 *)(__n)->resizer)+bytesof((__n)->offset)))
-
-#define forz(__i1, __i2, __n1, __n2)                                    \
-    for (value *__i1 = (value *) __n1->resizer, *__i2 = (value *)__n2->resizer; \
-         indin(__n1, __i1) && indin(__n2, __i2);                        \
-         __i1++, __i2++)
-
-#define push_mut_buffer(__n, __b)\
-    push_mut(__n, contentsu8((buffer)__b), ((buffer)__b)->length)
-
-
 // what does concat .. mean? only for vectors i think
 // right, for bitvectors we can take a zero-extended value and
 // coerce it to a vector
@@ -281,10 +271,10 @@ value concat_internal(value trash, ...)
     u64 offset = 0, o2;
     // maybe validate that the inputs are all vector-shaped?
     foreach_arg(trash, b) {
-        foreach(k, v, b) {
+        foreach_ordered(k, v, b) {
             u64 p = (u64)k + offset;
             if ((u64)k < o2) o2 = (u64)k;
-            table_insert(t, (value)p, b);
+            table_insert(t, (value)p, v);
         }
         offset = o2;
     }
@@ -307,7 +297,8 @@ buffer print_value(value v)
 
     
     // so these are really something like (apply concat (map x f))
-    string nested_indent = concat(stringify("\n"), vof(indent, (value)' '));
+    // +1 for the colon
+    string nested_indent = concat(stringify("\n"), vof(indent + 1, (value)' '));
 
     // dont need to pupate since out is a nursery also
     // if we do - this size is known from above
@@ -323,15 +314,16 @@ buffer print_value(value v)
     nursery out = allocate_nursery(total);
     boolean first = true;
     forz(k, v, keys, values) {
-        if (!first) 
-            push_mut_buffer(out, vof(indent - nzv(*k), (value)' '));
+        //        if (!first) 
+        push_mut_vector(out, vof(indent - nzv(*k) + 1, (value)' '));
 
         first = false;
         push_mut_buffer(out, *k);
         push_mut(out, ":", 8);
-        push_mut_buffer(out, *v);
+        push_mut_vector(out, *v); // assumes string f(n)->utf8
         push_mut(out, "\n", 8);
     }
+    if (out->offset) out->offset -= 8;
     return utf8_from_nursery(out);
 }
 

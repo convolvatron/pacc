@@ -161,7 +161,7 @@ static inline boolean equals(value a, value b)
     }
     // we are trying to avoid committing to length, so we are doing another
     // order n. if foreach is defined, then length is defined..so..
-    foreach(ka, va, a) count--;
+    foreach(_, _2, b) count--;
     
     return toboolean(count == 0);
 }
@@ -175,3 +175,6 @@ static inline u64 nzv(value v)
 }
 
 buffer print_value(value v);
+
+// umm
+#define foreach_ordered foreach
