@@ -114,6 +114,7 @@ value concat_internal(value trash, ...);
 
 
 value get_small(value v, value k);
+value get_union(value v, value k);
 
 static inline value get(value v, value k)
 {
@@ -124,6 +125,9 @@ static inline value get(value v, value k)
 
     if (tagof(v) == tag_small)
         return get_small(v, k);
+
+    if (tagof(v) == tag_union)
+        return get_union(v, k);
 
     // oh...you...get(string)->character
     if (tagof(v) == tag_utf8) {
@@ -178,3 +182,11 @@ buffer print_value(value v);
 
 // umm
 #define foreach_ordered foreach
+
+
+static inline value combine_internal(value trash, ...)
+{
+    return zero;
+}
+
+#define combine(...) combine_internal(zero, __VA_ARGS__, INVALID_ADDRESS)

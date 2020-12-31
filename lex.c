@@ -161,22 +161,84 @@ value set_of_strings(char *x, ...)
     return t;
 }
 
+
+#define right 0
+#define left 1
+#define prefix 2
+#define postfix 3 
+
+#define unary 1
+#define binary 1
+#define ternary 3
+
+struct operator {char *name; int precedence; int arity; int associativity;};
+    
+struct operator ops[] =
+    {
+     {"." , 1,  binary,  left},
+     {"(" , 1,  unary,   left},
+     {"[" , 1,  unary,   left},       
+     {"&" , 1,  unary,   right},
+     {"->", 1,  binary,  left},     
+     {"--", 1,  unary,   postfix},
+     {"++", 1,  unary,   postfix},
+     {"~" , 2,  unary,   right},
+     {"!" , 2,  unary,   right},     
+     {"--", 2,  unary,   prefix},
+     {"++", 2,  unary,   prefix},
+     {"*" , 2,  unary,   right},     
+     {"/" , 3,  binary,  left},
+     {"%" , 3,  binary,  left},     
+     {"*" , 3,  binary,  left},
+     {"+" , 4,  binary,  left},
+     {"-" , 4,  binary,  left}, 
+     {"<<", 5,  binary,  right},
+     {">>", 5,  binary,  right},
+     {"<=", 6,  binary,  left},
+     {">=", 6,  binary,  left},
+     {">" , 6,  binary,  left},
+     {">" , 6,  binary,  left},          
+     {"==", 7,  binary,  left},
+     {"!=", 7,  binary,  left},
+     {"&" , 8,  binary,  left},     
+     {"^" , 9,  binary,  left},
+     {"|" , 10, binary,  left},
+     {"&&", 11, binary,  left}, 
+     {"||", 12, binary,  left},
+     {":" , 13, ternary, right},     
+     {"?" , 13, ternary, right},
+     {"|=", 14, binary,  right},
+     {"%=", 14, binary,  right},
+     {"-=", 14, binary,  right},
+     {"/=", 14, binary,  right},
+     {"*=", 14, binary,  right},
+     {"&=", 14, binary,  right},
+     {"=" , 14, binary,  right},
+     {"^=", 14, binary,  right},
+     {"," , 15, binary,  left},
+};
+
+// array index, function - what are you doing here '{' .. oh, just lexical
+// char *others[] = {"#","(", ")", "[", "]", "{", "}"};
+
 u64 scan_operator(lexer lex, u64 start)
 {
-    // make a little dataspace for the syntax
-    static value tokens; 
-    if (!tokens) {
-        // not too hung up on distinguishing between keywords and operators?
-        tokens = set_of_strings("*", "*=", "&", "&=", "&&", "==", "=", "^=", "^", "#",
-                                ":", "|", "|=", "(", ")", "[", "]", "{", "}", ",", "?",
-                                "~", "--", "->", "-=", "<<", "/", "/=", "<=", "<:", "<%",
-                                ">=", ">>", ">", "%", "%=", ";", INVALID_ADDRESS);
+    // move dataspace construction up - ideally we have a static facts store
+    static value operators; 
+    if (!operators) {
+        operators = allocate_table(slen(ops));
+        for (struct operator *o = ops; o < (ops + slen(ops)); o++){
+            table_insert(operators, stringify(o->name),
+                         timm(sym(arity),         o->arity,
+                              sym(associativity), o->associativity,
+                              sym(precedence),    o->precedence));
+        }
     }
 
     u64 scan = start, next;
     while ((next = scan + utf8_length(characterof(lex->b, scan))),
            (scan < lex->b->length) && 
-           table_get(tokens, substring(lex->b, start, next))) {
+           table_get(operators, substring(lex->b, start, next))) {
         scan = next;
     }
     

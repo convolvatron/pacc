@@ -84,8 +84,6 @@ static Type storage_class(parser p)
 
 #define allocate_vector(...) false
 
-#define slen(__x) (sizeof(__x)/sizeof(*__x))
-
 struct numeric;
 
 // just buffer -> graph please

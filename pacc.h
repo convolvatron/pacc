@@ -202,3 +202,4 @@ result read_cast_expr(parser p, index offset, scope env);
 vector read_decl_init(parser p, index offset, scope env, Type ty);
 
 
+#define slen(__x) (sizeof(__x)/sizeof(*__x))
