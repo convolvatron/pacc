@@ -75,28 +75,43 @@ static u64 read_number(lexer lex, int offset, int base) {
     return offset;
 }
 
+static int character_rewrites[] = 
+    {    'a', '\a',
+         'b','\b',
+         'f','\f',
+         'n','\n',
+         'r','\r',
+         't','\t',
+         'v','\v'
+    };
+    
+    
 // consider removing this from the target language
 // also utf8 character constants?
 static u64 read_character_constant(lexer lex, u64 offset) {
     u64 end;
     character c = readc(lex->b, offset, end);
+
+    static value cws;
+    if (!cws) {
+        cws = allocate_table(slen(character_rewrites)/2);
+        for (int i = 0; i < slen(character_rewrites); i+=2)
+            table_insert(cws,
+                         (value)(u64)character_rewrites[i],
+                         (value)(u64)character_rewrites[i+1]);
+    }
     
     if (c == '\\') {
         character c = readc(lex->b, end, end);
-        if (!(((c == '\'') || (c == '"') || (c == '?') || (c == '\\')))) {
-            if (c == 'a') c = '\a';
-            if (c == 'b') c = '\b';
-            if (c == 'f') c = '\f';
-            if (c == 'n') c = '\n';
-            if (c == 'r') c = '\r';
-            if (c == 't') c = '\t';
-            if (c == 'v') c = '\v';
+        character cp = (u64)get(cws, (value)c);
+        //        if (!(((c == '\'') || (c == '"') || (c == '?') || (c == '\\')))) {
+        if (cp) {
             // xxx - immediate unicode(?) syntax?
             //   if (c == sym(x)) return parse_number(lex, 16);
             //   int x = digit_of(*(u8 *)contents(lex->b));
             //   if ((x >= 0) && (x <= 7)) return parse_number(lex, 8);
-            lerror(p, "unknown escape character: \\%c", c);
-        }
+        } else lerror(p, "unknown escape character: \\%c", cp);
+
     }
     if (readc(lex->b, end, end) != '"') lerror(p, "unterminated character constant", lex);
     make_token(lex->out, offset, end, value, (value)(u64)c);
