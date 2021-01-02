@@ -60,7 +60,7 @@ static Node ast_if(Node cond, Node then, Node els) {
 
 static result read_if_stmt(parser p, index offset, scope env) {
     expect(p, offset, stringify("("));
-    result cond = read_expr(p, offset, env);
+    result cond = read_expression(p, offset, env);
     expect(p, offset, stringify(")"));
     result then = read_statement(p, offset, env);
     if (!next_token(p, offset, sym(else)))
@@ -93,7 +93,7 @@ static result read_do_stmt(parser p, index offset, scope env)
     if (!is_keyword(tok, sym(while)))
         error("'while' is expected, but got %s", tok);
     expect(p, offset, stringify("("));
-    result cond = read_expr(p, offset, env);
+    result cond = read_expression(p, offset, env);
     expect(p, cond.offset+1, stringify(")"));
     expect(p, cond.offset+2, stringify(";"));
     
@@ -128,7 +128,7 @@ static Node make_switch_jump(scope env, Node var, tuple c) {
 static result read_switch_stmt(parser p, index offset, scope env)
 {
     expect(p, offset, stringify("("));
-    result expr = read_expr(p, offset, env);
+    result expr = read_expression(p, offset, env);
     expect(p, expr.offset, stringify(")"));
 
     buffer end = make_label();
@@ -215,7 +215,7 @@ static Node ast_return(Node retval)
 }
 
 static result read_return_stmt(parser p, index offset, scope env) {
-    result retval = read_expr(p, offset, env);
+    result retval = read_expression(p, offset, env);
     expect(p, offset, stringify(";")); // cant we genernicize this?
     // ternary
     if (retval.v)
@@ -227,7 +227,7 @@ static result read_goto_stmt(parser p, index offset, scope env) {
     if (next_token(p, offset, sym(*))) {
         // [GNU] computed goto. "goto *p" jumps to the address pointed by p.
 
-        result expr = read_cast_expr(p, offset, env);
+        result expr = read_cast_expression(p, offset, env);
         if (pget(expr.v, sym(type), sym(kind)) != sym(ptr))
             error("pointer expected for computed goto, but got %s", node2s(expr));
         return res(ast_computed_goto(expr.v), expr.offset);
@@ -272,9 +272,9 @@ static result read_for_stmt(parser p, index offset, scope env) {
     buffer end = make_label();
     // push_scope(p);
     result init = read_opt_decl_or_stmt(p, offset, env);
-    result cond = read_expr(p, offset, env);
+    result cond = read_expression(p, offset, env);
     expect(p, offset, stringify(";"));
-    result step = read_expr(p, offset, env);
+    result step = read_expression(p, offset, env);
     expect(p, offset, stringify(")"));
     result body = read_statement(p, offset, env);
 
@@ -291,7 +291,7 @@ static result read_for_stmt(parser p, index offset, scope env) {
 
 static result read_while_stmt(parser p, index offset, scope env) {
     expect(p, offset, stringify("("));
-    result cond = read_expr(p, offset, env);
+    result cond = read_expression(p, offset, env);
     expect(p, offset, stringify(")"));
 
     buffer beg = make_label();
@@ -332,7 +332,7 @@ result read_statement(parser p, index offset, scope env) {
     if ((k == sym(identifier)) && next_token(p, offset, stringify(":")))
         return read_label(p, offset, env, tok);
 
-    result r = read_expr(p, offset, env);
+    result r = read_expression(p, offset, env);
     expect(p, offset, stringify(";"));
     return r;
 }

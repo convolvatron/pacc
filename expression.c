@@ -32,12 +32,12 @@ static value expression_reduce(value right, value left, value x)
 }
 
                          
-result read_expr(parser p, u64 offset, scope env)
+result read_expression(parser p, u64 offset, scope env)
 {
     return res(zero, 0);
 }
 
-result read_cast_expr(parser p, u64 offset, scope env)
+result read_cast_expression(parser p, u64 offset, scope env)
 {
     return res(zero, 0);
 }

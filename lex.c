@@ -183,7 +183,7 @@ value set_of_strings(char *x, ...)
 #define postfix 3 
 
 #define unary 1
-#define binary 1
+#define binary 2
 #define ternary 3
 
 struct operator {char *name; int precedence; int arity; int associativity;};
@@ -199,8 +199,8 @@ struct operator ops[] =
      {"++", 1,  unary,   postfix},
      {"~" , 2,  unary,   right},
      {"!" , 2,  unary,   right},     
-     {"--", 2,  unary,   prefix},
-     {"++", 2,  unary,   prefix},
+     //     {"--", 2,  unary,   prefix}, // ahem
+     //     {"++", 2,  unary,   prefix},
      {"*" , 2,  unary,   right},     
      {"/" , 3,  binary,  left},
      {"%" , 3,  binary,  left},     
@@ -212,7 +212,7 @@ struct operator ops[] =
      {"<=", 6,  binary,  left},
      {">=", 6,  binary,  left},
      {">" , 6,  binary,  left},
-     {">" , 6,  binary,  left},          
+     {"<" , 6,  binary,  left},          
      {"==", 7,  binary,  left},
      {"!=", 7,  binary,  left},
      {"&" , 8,  binary,  left},     
@@ -242,18 +242,22 @@ u64 scan_operator(lexer lex, u64 start)
     static value operators; 
     if (!operators) {
         operators = allocate_table(slen(ops));
+        value uns = allocate_table(slen(ops)); // precount!
+        value bins = allocate_table(slen(ops));              // terns?   
         for (struct operator *o = ops; o < (ops + slen(ops)); o++){
-            table_insert(operators, stringify(o->name),
-                         timm(sym(arity),         o->arity,
+            value n =    timm(sym(arity),         o->arity,
                               sym(associativity), o->associativity,
-                              sym(precedence),    o->precedence));
+                              sym(precedence),    o->precedence);
+            table_insert((o->arity == unary)?uns:bins, stringify(o->name), n);
         }
+        operators = timm(sym(binary), bins, sym(unary), uns);
     }
 
+    // xxx - disabling unary for a second -- can just union it here in c
     u64 scan = start, next;
     while ((next = scan + utf8_length(characterof(lex->b, scan))),
            (scan < lex->b->length) && 
-           table_get(operators, substring(lex->b, start, next))) {
+           pget(operators, sym(binary), substring(lex->b, start, next))) {
         scan = next;
     }
     
@@ -271,7 +275,12 @@ static u64 choose(lexer lex, u64 scan)
     if (lex->b->length == scan) return scan;
     
     character c = readc(lex->b, scan, _);
-    
+
+    // there are more here
+    if (c == ';') {
+        make_token(lex->out, scan, scan+1, keyword, stringify(";"));
+        return scan+8;
+    }
     if (c == '"') return read_string(lex, scan);
     if (c == '\'') return read_character_constant(lex, scan);
     if (isalpha(c) || (c == '_')) return read_ident(lex, scan);

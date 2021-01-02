@@ -251,7 +251,6 @@ result read_declaration(parser p, index offset, scope env)
     result basetype = read_decl_spec(p, offset, env);
     
     result ty = read_declarator(p, basetype.offset, env, basetype.v);
-    outputline(stringify("read declaration declarator"), print(ty.v));
     if (iserror(ty)) return ty;
     
     // there was some special handling to assign a global name for static locals
@@ -262,9 +261,10 @@ result read_declaration(parser p, index offset, scope env)
         // set(p->global, name, r);
         return error("no typedef yet");
     }
-    
+
     // initializer
-    if (next_token(p, offset, sym(=))) {
+    if (next_token(p, ty.offset, sym(=))) {
+        offset = ty.offset + 1; // chaining here?
         vector r = 0;
         if (is_keyword(token(p, offset), stringify("{")) || is_string(ty.v)) {
             tuple tok = token(p, offset);
@@ -281,7 +281,6 @@ result read_declaration(parser p, index offset, scope env)
                     return res(v, offset + 1);
                 }
             }
-            offset--;
             string tk = pget(ty.v, sym(kind));
             if (tk == sym(array)) {
                 boolean has_brace = toboolean(next_token(p, offset, stringify("{")));
@@ -346,6 +345,8 @@ result read_declaration(parser p, index offset, scope env)
                 //push(block, ast_decl(var, zero));
             }
             Node var = ast_var(env, ty.v, zero);
+        } else {
+            read_expression(p, offset, env);
         }
     }    
     if (next_token(p, ty.offset, stringify(";"))) return res(zero,ty.offset+1);

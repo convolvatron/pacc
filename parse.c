@@ -13,7 +13,7 @@ void errorf(void *x, char *fmt, ...);
 boolean is_keyword(tuple tok, string x)
 {
     return toboolean((get(tok, sym(kind)) == sym(keyword)) &&
-                     (get(tok, sym("value")) == x));
+                     (equals(get(tok, sym(value)), x)));
 }
 
 

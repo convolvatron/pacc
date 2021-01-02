@@ -4,7 +4,7 @@
 #include <pacc.h>
 #include <stdlib.h>
 
-char *a[]={"int x = 58;",
+char *a[]={"int x = 2 + y * 7 + 3;",
            "struct z {int y; int f};",
            "int main() {return 5;}"};
 

@@ -1,0 +1,87 @@
+a token is a node if its a terminal
+
+node(_n) ->
+      operator(_n - 1, )
+
+
+
+  2   1   3   1
+a * 3 + b ^ 7 + 0
+1 2 3 4 5 6 7 8 9  indices
+a        b
+*        ^
+3        7
+1     2  3    4 5 indices
+
+done in the next step
+
+node looks left and right, chooses the highest precidence (where is associativity)
+operator to bind to. an operator that has his slots filled becomes a node
+
+so in a fixed point system, thats all we need. in paccland we have a general
+prohibition against writing things, or at least writing things that can also be read
+(nursery/finalize/pupate). i guess we can assume that we will be creating a
+new world at each step. if so, then we dont have to worry about finding peers...
+we do need to .. find the send addresses. which i guess is a contextualized scan
+in the old space? i mean, we have to construct this numbering whether its up
+front or on demand. 
+
+i guess the alternative is a linking structure? that seems more natural than
+the scan representation (?). we would need next and prev....still leaves the
+issue of the scan/send world hopping mechanism.
+
+associativity is to determine the reduction ordering in the case where
+the precedences are equal (i.e 1 + 2 + 3).
+
+still not 100% clear on the rules surrounding the ternary operator.
+
+we are going to posit that if a reduction happens, then that precludes
+a reduction occuring on the adjacent node. if this is true, then the
+pointers from the reduction are well known (next of the right node,
+previous of the left). however, we do need to 'update' the prev of the
+next, and the next of the prev. i am presuming(?) that we can use direct
+references (the pacc version of pointers) instead of maintaining a linear
+relationship?
+
+the total number of steps is the height of the parse tree ( O(n)
+Ω(log₂n)..not quite base 2 because of the ternary operator).
+
+so then each of these steps takes a world and makes a world. it would
+be handy then if this primordial world only had objects of a single
+shape. i mean generic objects, terms and operators should be
+distinguished i guess.
+
+and we're kinda stuck copying the lexical context through all this.
+ 
+for the binary case.
+
+   1) i'm an operator with a precedence 𝓅 ...oh so pretty..but kinda .. anyways,
+   if my prevs prev and my nexts next both have precdence < 𝓅, then i reduce
+
+   2) (associativity in the case where one of those is 𝓅)
+
+   in order to update my prevs prevs next pointer (and my nexts next prev),
+   i can assert the new state - there are no conflicts. however, the other
+   'pointer' of the same object might be modified by some other reduction.
+
+   can i keep the pointers as separate objects? that would make sense? how
+   would I implement step 1 without doing an order n scan to find the
+   next pointer? i can use the node as a key? right, so i can implement
+   the next and prev functions concretely, simply by building the appropriate
+   map/index when constructing the new world. and i guess i'd need to be
+   able to iterate over all the operators. i could have 2 relations,
+   one for next(op, node) and one for next(node, op). does that help in any way?
+   (i.e. by allowing us to use the range or domain as the set of operators)
+
+   we can also try to use union to make local changes...i guess obscuring keys
+   through a union is something that is normal. infix map lookup
+
+(if (reduce w)
+    (operator x)
+    (> x.precedence right.(right.x).precedence) ; 0.0 -> 0!
+    (> x.precedence left.(left.x).precedence)
+    (union {right:right.(right.x)
+            left:left.(left.x)
+            op:w.x
+            left
+            right} w))
