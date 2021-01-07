@@ -84,41 +84,6 @@ static Type storage_class(parser p)
 
 #define allocate_vector(...) false
 
-struct numeric;
-
-// just buffer -> graph please
-value parse(buffer b)
-{
-    parser p = malloc(sizeof(struct parser)); // xxx stdlib
-    p->tokens = lex(b);
-    //    output(print(p->tokens));
-    //    printf ("\n");
-
-    Type vt = timm("kind", sym(void));
-    // set(pget(p->global, sym(types)), sym(void), vt);
-    Type v = make_ptr_type(vt);
-            
-    struct {value name; int length; boolean has_sign;} numtypes[] =  {{sym(boolean),  1,   false},
-                                                                      {sym(char),     8,   true},
-                                                                      {sym(short),    16,  true},
-                                                                      {sym(int),      32,  true},
-                                                                      {sym(signed),   32,  true},
-                                                                      {sym(unsigned), 32,  false},
-                                                                      {sym(long),     64,  true},
-                                                                      {sym(llong),    128, true},
-                                                                      {sym(uchar),    8,   false},
-                                                                      {sym(ushort),   16,  false},
-                                                                      {sym(uint),     32,  false},
-                                                                      {sym(ulong),    64,  false},
-                                                                      {sym(ullong),   128, false}};
-
-    value types = allocate_table(slen(numtypes));
-    // typedef
-    for (int i = 0; i < slen(numtypes) ; i++) {
-        table_insert(types, numtypes[i].name,
-                     timm(sym(length), numtypes[i].length,
-                          sym(signed), numtypes[i].has_sign));
-    }
 
 #if 0
     define_builtin(p, sym(__builtin_return_address), v, voidptr);
@@ -129,11 +94,27 @@ value parse(buffer b)
     define_builtin(p, sym(__builtin_va_arg), vt, allocate_vector(voidptr, voidptr));
     define_builtin(p, sym(__builtin_va_start), vt, allocate_vector(voidptr));
 #endif
-    u64 scan = 0;
 
-    value root = timm(sym(types), types);
+extern value world();
+
+
+// just buffer -> graph please
+value parse(buffer b)
+{
+    parser p = malloc(sizeof(struct parser)); // xxx stdlib - we're about to kill this guy anyways
+    value root = world();
+
     outputline(print(root));
-
+    value keywords = allocate_nursery(60);
+    foreach (k1, v1, get(root, sym(operators))){
+        foreach (k2, v2, v1) {
+            push_mut_value(keywords, k2);
+        }
+    }
+    
+    p->tokens = lex(b, set_from_nursery(keywords));
+    
+    u64 scan = 0;
     while (get(p->tokens, (value)scan)) {
         result r = read_declaration(p, scan, root);
         scan = r.offset;

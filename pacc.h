@@ -17,7 +17,7 @@ typedef tuple Node;
 
 boolean is_keyword(tuple tok, string c);
 value parse(buffer b);
-vector lex(buffer b);
+vector lex(buffer b, value keywords);
 
 typedef struct lexer *lexer;
 typedef struct parser *parser;
@@ -203,3 +203,15 @@ vector read_decl_init(parser p, index offset, scope env, Type ty);
 
 
 #define slen(__x) (sizeof(__x)/sizeof(*__x))
+
+
+static inline value set_internal(value trash, ...)
+{
+    int total = 0;
+    foreach_arg(trash, i) total++;
+    value t = allocate_table(total);
+    foreach_arg(trash, i) table_insert(t, i, true);
+    return t;
+}
+
+#define set(...) set_internal(0, __VA_ARGS__)

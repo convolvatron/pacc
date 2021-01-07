@@ -5,15 +5,12 @@
 
 #define lerror(...)
 
-// should go 
+// should get flattened out
 struct lexer {
     buffer b;
-
-    value tokens; // per-lex, right? sure, but a set please
-    value whitespace; // per-lex, right? sure, but a set please    
-    value backslash_translations;
-    
-    //    nursery r;
+    value keywords;
+    // move to world ?  also backslash translations
+    value whitespace; 
     nursery out;
 };
 
@@ -153,18 +150,6 @@ void build_backslashes_internal(lexer lex, ...)
 {
 }
 
-
-value set(value x, ...)
-{
-    int total = 1;
-    foreach_arg(x, i) total++;
-    value t = allocate_table(total);
-    //sets
-    table_insert(t, x, true);    
-    foreach_arg(x, i) table_insert(t, i, true);
-    return t;
-}
-
 value set_of_strings(char *x, ...)
 {
     int total = 1;
@@ -176,88 +161,13 @@ value set_of_strings(char *x, ...)
     return t;
 }
 
-
-#define right 0
-#define left 1
-#define prefix 2
-#define postfix 3 
-
-#define unary 1
-#define binary 2
-#define ternary 3
-
-struct operator {char *name; int precedence; int arity; int associativity;};
-    
-struct operator ops[] =
-    {
-     {"." , 1,  binary,  left},
-     {"(" , 1,  unary,   left},
-     {"[" , 1,  unary,   left},       
-     {"&" , 1,  unary,   right},
-     {"->", 1,  binary,  left},     
-     {"--", 1,  unary,   postfix},
-     {"++", 1,  unary,   postfix},
-     {"~" , 2,  unary,   right},
-     {"!" , 2,  unary,   right},     
-     //     {"--", 2,  unary,   prefix}, // ahem
-     //     {"++", 2,  unary,   prefix},
-     {"*" , 2,  unary,   right},     
-     {"/" , 3,  binary,  left},
-     {"%" , 3,  binary,  left},     
-     {"*" , 3,  binary,  left},
-     {"+" , 4,  binary,  left},
-     {"-" , 4,  binary,  left}, 
-     {"<<", 5,  binary,  right},
-     {">>", 5,  binary,  right},
-     {"<=", 6,  binary,  left},
-     {">=", 6,  binary,  left},
-     {">" , 6,  binary,  left},
-     {"<" , 6,  binary,  left},          
-     {"==", 7,  binary,  left},
-     {"!=", 7,  binary,  left},
-     {"&" , 8,  binary,  left},     
-     {"^" , 9,  binary,  left},
-     {"|" , 10, binary,  left},
-     {"&&", 11, binary,  left}, 
-     {"||", 12, binary,  left},
-     {":" , 13, ternary, right},     
-     {"?" , 13, ternary, right},
-     {"|=", 14, binary,  right},
-     {"%=", 14, binary,  right},
-     {"-=", 14, binary,  right},
-     {"/=", 14, binary,  right},
-     {"*=", 14, binary,  right},
-     {"&=", 14, binary,  right},
-     {"=" , 14, binary,  right},
-     {"^=", 14, binary,  right},
-     {"," , 15, binary,  left},
-};
-
-// array index, function - what are you doing here '{' .. oh, just lexical
-// char *others[] = {"#","(", ")", "[", "]", "{", "}"};
-
-u64 scan_operator(lexer lex, u64 start)
+u64 scan_keyword(lexer lex, u64 start, value keywords)
 {
-    // move dataspace construction up - ideally we have a static facts store
-    static value operators; 
-    if (!operators) {
-        operators = allocate_table(slen(ops));
-        value uns = allocate_table(slen(ops)); // precount!
-        value bins = allocate_table(slen(ops));              // terns?   
-        for (struct operator *o = ops; o < (ops + slen(ops)); o++){
-            value n =    timm(sym(arity),         o->arity,
-                              sym(associativity), o->associativity,
-                              sym(precedence),    o->precedence);
-            table_insert((o->arity == unary)?uns:bins, stringify(o->name), n);
-        }
-        operators = timm(sym(binary), bins, sym(unary), uns);
-    }
-
     // xxx - disabling unary for a second -- can just union it here in c
     u64 scan = start, next;
     while ((next = scan + utf8_length(characterof(lex->b, scan))),
            (scan < lex->b->length) && 
-           pget(operators, sym(binary), substring(lex->b, start, next))) {
+           pget(keywords, sym(binary), substring(lex->b, start, next))) {
         scan = next;
     }
     
@@ -268,7 +178,7 @@ u64 scan_operator(lexer lex, u64 start)
     return start;
 }
 
-static u64 choose(lexer lex, u64 scan)
+static u64 choose(lexer lex, u64 scan, value keywords)
 {
     u64 _;
     
@@ -286,19 +196,20 @@ static u64 choose(lexer lex, u64 scan)
     if (isalpha(c) || (c == '_')) return read_ident(lex, scan);
     if (isdigit(c, 10)) return read_number(lex, scan, 10);
     
-    u64 next = scan_operator(lex, scan);
+    u64 next = scan_keyword(lex, scan, keywords);
     if (next == scan) halt("lex error", c);
     return next;
 }
 
-vector lex(buffer b)
+// schema - backslashes
+//          whitespaces
+//          keywords
+
+vector lex(buffer b, value keywords)
 {
     lexer lex = malloc(sizeof(struct lexer)); // malloc?
     lex->out = allocate_nursery(128);
     lex->b = b;
-    // sleezy workaround to avoid a linear chain...however, linear isn't
-    // so bad?   (value:int next:(value:main next:(value:eof)))
-    
     build_backslashes(lex, a, b, f, n, r, t, v, INVALID_ADDRESS);
     value whitespace = set ((value)' ',
                             (value)'\t',
@@ -311,7 +222,7 @@ vector lex(buffer b)
             scan = next;
             c = readc(lex->b, scan, next);
         }
-        scan = choose(lex, scan);
+        scan = choose(lex, scan, keywords);
     }
     value result = allocate_table(lex->out->offset/bitsizeof(value));
 
