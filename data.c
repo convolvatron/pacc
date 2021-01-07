@@ -12,9 +12,8 @@ result parse_value(buffer b, u64 offset)
 {
     value whitespace;
     if (!whitespace)
-        whitespace = set((value)' ',
-                         (value)'\t',
-                         (value)'\n', INVALID_ADDRESS);
+        whitespace = set((value)' ',(value)'\t',(value)'\n');
+    
     offset = forc(b, offset, get(whitespace, (value)c));
     if (characterof(b, offset) == '(') {
         nursery n = allocate_nursery(10);
@@ -35,7 +34,12 @@ result parse_value(buffer b, u64 offset)
     }
 }
 
+extern u8 *_binary_syntax_start;
+u64 _binary_syntax_size;
+
 value world()
 {
-    return zero;
+    // doesn't work on mac
+    result r = parse_value(allocate_utf8(_binary_syntax_start, bitsof(_binary_syntax_size)), 0);
+    return r.v;
 }
