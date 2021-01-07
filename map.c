@@ -56,7 +56,6 @@ value table_get(value t, value k)
 
     while (!empty_entry(p = slot(b, h++)) && (count++ < tlen))
         if (equals(p[0], k)) return p[1];
-    outputline(sym(get_fail), print(k));
     return 0;
 }
 

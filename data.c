@@ -10,7 +10,7 @@
 
 result parse_value(buffer b, u64 offset)
 {
-    value whitespace;
+    static value whitespace = 0;
     if (!whitespace)
         whitespace = set((value)' ',(value)'\t',(value)'\n');
     
@@ -18,10 +18,10 @@ result parse_value(buffer b, u64 offset)
     if (characterof(b, offset) == '(') {
         nursery n = allocate_nursery(10);
         while (characterof(b, offset) != ')') {
-            result k = parse_value(b, offset+1);
+            result k = parse_value(b, offset+8);
             push_mut_value(n, k.v);
-            if (characterof(b, offset) != ':') halt("invalid separator");
-            result v = parse_value(b, k.offset);
+            if (characterof(b, k.offset) != ':') halt("invalid separator");
+            result v = parse_value(b, k.offset+8);
             push_mut_value(n, v.v);            
             offset = v.offset;
         }
@@ -30,16 +30,18 @@ result parse_value(buffer b, u64 offset)
         u64 end = forc(b, offset, (c != ':') && (c !='(') && (!get(whitespace, (value)c)));
         // shouldn't be ripping trailing whitespace? - just to clean up the above
         return res(substring (b, offset, end),
-                   forc(b, offset, get(whitespace, (value)c)));
+                   forc(b, end, get(whitespace, (value)c)));
     }
 }
 
-extern u8 *_binary_syntax_start;
-u64 _binary_syntax_size;
+extern u8 _binary_syntax_start;
+extern u8 _binary_syntax_end;
 
 value world()
 {
     // doesn't work on mac
-    result r = parse_value(allocate_utf8(_binary_syntax_start, bitsof(_binary_syntax_size)), 0);
+    result r = parse_value(allocate_utf8(&_binary_syntax_start,
+                                         &_binary_syntax_end  - &_binary_syntax_start),
+                           0);
     return r.v;
 }

@@ -214,4 +214,5 @@ static inline value set_internal(value trash, ...)
     return t;
 }
 
-#define set(...) set_internal(0, __VA_ARGS__)
+#define set(...) set_internal(0, __VA_ARGS__, INVALID_ADDRESS)
+
