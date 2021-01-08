@@ -167,7 +167,7 @@ u64 scan_keyword(lexer lex, u64 start, value keywords)
     u64 scan = start, next;
     while ((next = scan + utf8_length(characterof(lex->b, scan))),
            (scan < lex->b->length) && 
-           pget(keywords, sym(binary), substring(lex->b, start, next))) {
+           pget(keywords, substring(lex->b, start, next))) {
         scan = next;
     }
     

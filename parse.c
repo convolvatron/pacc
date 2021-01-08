@@ -108,6 +108,7 @@ value parse(buffer b)
     value keywords = allocate_nursery(60);
     foreach (k1, v1, get(root, sym(operators))){
         foreach (k2, v2, v1) {
+            // soft intern
             push_mut_value(keywords, k2);
         }
     }

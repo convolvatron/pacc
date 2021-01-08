@@ -35,9 +35,10 @@ void table_insert(buffer b, value k, value v)
     int count = 0; // really shouldn't happen
     for (u64 hv = hash(k); count < table_len(b) ;hv++) {
         value *s = slot(b, hv);
-        // no muts here!! we're allowing zero because its convenient - 
-        if (s[0] && s[1] && equals(s[0], k)) halt("larval table overwrite");
-        if (empty_entry(s)){
+        // in some circumstances we'd like to enforce uniqueness in the nursery,
+        // but..sometimes we're doing a projection
+        if ((s[0] && s[1] && equals(s[0], k)) || 
+            (empty_entry(s))){
             s[0] = k;            
             s[1] = v;
             return;
