@@ -1,8 +1,22 @@
 (
   types:
+   (boolean: (length:1)
+             char:(length:     8,   signed:true)
+             short:(length:    16  signed:true)
+             int:(length:      32  signed:true)
+             signed:(length:   32  signed:true)
+             unsigned:(length: 32)
+             long:(length:     64  signed:true)
+             llong:(length:128, signed:true)
+             uchar:(lenth:8)
+             ushort:(length:16)
+             uint:(length:32)
+             ulong:(length:64)
+             ullong:(length:128))
+                                                                  
   
-  operators:
-   (binary:(,   :(precedence: 15 associativity:left)
+   operators:
+    (binary:(,  :(precedence: 15 associativity:left)
               !=:(precedence: 7 associativity:left)
               . :(precedence: 1 associativity:left)
               * :(precedence: 3 associativity:left)
@@ -34,7 +48,7 @@
 
       postfix:( --: (precedence:1)
                 ++: (precedence:1)
-               \( : (precedence:1)
+                #28 : (precedence:1)
                 [ : (precedence:1))
 
       prefix:( ! : (precedence:1)
@@ -44,20 +58,6 @@
                --: (precedence:2)
                * : (precedence:2))
                
-      ternary:(\: : (precedence: 13)
+      ternary:(#3a : (precedence: 13)
                ? : (precedence:13)))
 
- {{sym(boolean),  1,   false},
-                                                                     {sym(char),     8,   true},
-                                                                    {sym(short),    16,  true},
-                                                                  {sym(int),      32,  true},
-                                                                  {sym(signed),   32,  true},
-                                                                  {sym(unsigned), 32,  false},
-                                                                  {sym(long),     64,  true},
-                                                                  {sym(llong),    128, true},
-                                                                  {sym(uchar),    8,   false},
-                                                                  {sym(ushort),   16,  false},
-                                                                  {sym(uint),     32,  false},
-                                                                  {sym(ulong),    64,  false},
-                                                                  {sym(ullong),   128, false}};
-                                                                  

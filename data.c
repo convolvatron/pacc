@@ -10,27 +10,40 @@
 
 result parse_value(buffer b, u64 offset)
 {
-    static value whitespace = 0;
-    if (!whitespace)
+    static value whitespace = 0, terminus;
+    if (!whitespace) {
         whitespace = set((value)' ',(value)'\t',(value)'\n');
-    
-    offset = forc(b, offset, get(whitespace, (value)c));
-    if (characterof(b, offset) == '(') {
+        value special = set((value)'(',(value)')',(value)':');
+        terminus = combine(whitespace, special);
+    }
+
+    offset = forc(b, offset, get(whitespace, (value)c));    
+    switch (characterof(b, offset)) {
+    case '(': {
         nursery n = allocate_nursery(10);
         while (characterof(b, offset) != ')') {
             result k = parse_value(b, offset+8);
             push_mut_value(n, k.v);
-            if (characterof(b, k.offset) != ':') halt("invalid separator");
-            result v = parse_value(b, k.offset+8);
+            offset = forc(b, k.offset, get(whitespace, (value)c));            
+            if (characterof(b, offset) != ':') halt("invalid separator");
+            result v = parse_value(b, offset+8);
             push_mut_value(n, v.v);            
             offset = v.offset;
         }
-        return res(table_from_nursery(n), offset+1);
-    } else {
-        u64 end = forc(b, offset, (c != ':') && (c !='(') && (!get(whitespace, (value)c)));
-        // shouldn't be ripping trailing whitespace? - just to clean up the above
-        return res(substring (b, offset, end),
-                   forc(b, end, get(whitespace, (value)c)));
+        return res(table_from_nursery(n), offset+8);
+    }
+    // this has lots of issues....but for now...
+    case '#':
+        {
+            u64 end = forc(b, offset, !get(terminus, (value)c));
+            // translate as hex
+            return res(substring (b, offset, end), end);
+        }
+    default:
+        {
+            u64 end = forc(b, offset, !get(terminus, (value)c));
+            return res(substring (b, offset, end), end);
+        }
     }
 }
 

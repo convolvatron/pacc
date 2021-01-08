@@ -61,9 +61,8 @@ static inline value table_from_nursery(nursery n)
 {
     value t = allocate_table(n->offset/bitsizeof(value));
     u64 parity = 0;
-    value k;
+    value k = 0;
     fornv(i, n){
-        outputline(print(k));
         if (!parity) k = *i;
         else table_insert(t, k, *i);
         parity ^= 1;

@@ -106,14 +106,6 @@ static inline Type make_array_type(Type ty, int len) {
                 "len", len);
 }
 
-// location - doesn't this just come from lexland?..i guess type
-static inline Node ast_string(scope env, buffer in)
-{
-    return timm("kind", sym(literal),
-                "type", make_array_type(pget(env, sym(type), sym(char)), in->length),
-                "value", in);
-}
-
 static inline boolean is_type(scope env, tuple tok)
 {
     value k= get(tok, sym(kind));

@@ -186,7 +186,14 @@ buffer print_value(value v);
 
 static inline value combine_internal(value trash, ...)
 {
-    return zero;
+    int count =0;
+    foreach_arg(trash, _) count++;
+    buffer  b = allocate(tag_union, count*bitsizeof(value));
+    count = 0;
+    foreach_arg(trash, i) contents64(b)[count++] = (u64)i;
+    // xx - hash is not right
+    return b;
 }
 
 #define combine(...) combine_internal(zero, __VA_ARGS__, INVALID_ADDRESS)
+
