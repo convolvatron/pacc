@@ -32,6 +32,8 @@ typedef struct result {
 } result;
 
 #define res(__v, __o) ({struct result __k = {true, __v, __o, 0}; __k;})
+// yes, we do want offsets on failure!
+#define failure(__v, __o) ({struct result __k = {false, __v, __o, 0}; __k;})
 
 result read_subscript_expr(parser p, index offset, scope env, Node node);
 result read_expression(parser p, index offset, scope env);

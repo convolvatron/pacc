@@ -11,7 +11,8 @@ result middle(parser p, u64 offset, scope env, u64 left_precedence)
     // me again?
 
     value t = token(p, offset);
-    value op = pget(env, sym(binary), get(t, sym(value)));
+    value op = pget(env, sym(operators), sym(binary), get(t, sym(value)));
+    if (!op) return failure(stringify("operator not found"), offset);
     outputline(sym(op), print(op));
     result right =  leaf(p, offset+1, env, (u64)get(op, sym(precendence)));
     return res(timm("right", right.v), right.offset);

@@ -59,7 +59,7 @@ static inline boolean isalpha(character x)
 // Reads a number literal. Lexer's grammar on numbers is not strict.
 // Integers and floating point numbers and different base numbers are not distinguished.
 // assume short
-static u64 read_number(lexer lex, int offset, int base) {
+static u64 read_number(lexer lex, u64 offset, int base) {
     u64 result = 0, end = offset, start= offset;
     character c;
     while (c = (u32)readc(lex->b, offset, end), isdigit(c, base)) {
@@ -172,6 +172,7 @@ u64 scan_keyword(lexer lex, u64 start, value keywords)
     }
     
     if (scan > start) {
+        printf("scan keyword %lld %lld\n", start, scan);
         make_token(lex->out, start, scan, keyword, substring(lex->b, start, scan));
         return scan;
     }
