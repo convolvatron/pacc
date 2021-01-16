@@ -2,7 +2,7 @@
 
 result leaf(parser p, u64 offset, scope env, u64 left_precedence);
 
-result middle(parser p, u64 offset, scope env, u64 left_precedence)
+result middle(parser p, u64 offset, scope env, u64 left_precedence, value left)
 {
     // ok, i've being called with p=5, and the new guy is p=3,
     // so i want to reduce the left....i dont have to do any
@@ -15,7 +15,11 @@ result middle(parser p, u64 offset, scope env, u64 left_precedence)
     if (!op) return failure(stringify("operator not found"), offset);
     outputline(sym(op), print(op));
     result right =  leaf(p, offset+1, env, (u64)get(op, sym(precendence)));
-    return res(timm("right", right.v), right.offset);
+    outputline(print(right.v));
+    return res(timm(sym(right), right.v,
+                    sym(left), left,
+                    sym(operator), op),               
+               right.offset);
 }
 
 static inline boolean terminal(value t)
@@ -31,7 +35,8 @@ result leaf(parser p, u64 offset, scope env, u64 left_precedence)
     value t = token(p, offset);
     if (terminal(t)) {
         // need to combine this term with the leftmost?
-        result right = middle(p, offset+1, env, left_precedence);
+        result right = middle(p, offset+1, env, left_precedence, t);
+        if (isfailure(right)) return res(t, offset+1);
         return right;
     } else {
         // prefix case
@@ -44,7 +49,10 @@ result leaf(parser p, u64 offset, scope env, u64 left_precedence)
                          
 result read_expression(parser p, u64 offset, scope env)
 {
-    return leaf(p, offset, env, 0);
+    result z = leaf(p, offset, env, 0);
+    output(emit_expression(z.v));
+    halt("zig");
+    return z;
 }
 
 result read_cast_expression(parser p, u64 offset, scope env)

@@ -16,13 +16,13 @@
                                                                   
   
    operators:
-    (binary:(,  :(precedence: 15 associativity:left)
+    (binary:(,  :(precedence: 15 associativity:left operation:sequence)
               !=:(precedence: 7 associativity:left)
               . :(precedence: 1 associativity:left)
-              * :(precedence: 3 associativity:left)
+              * :(precedence: 3 associativity:left operation:multiply)
               / :(precedence: 3 associativity:left)
               ^ :(precedence: 9 associativity:left)
-              + :(precedence: 4 associativity:left)
+              + :(precedence: 4 associativity:left operation:add)
               <=:(precedence: 6 associativity:left)
               ==:(precedence: 7 associativity:left)
               > :(precedence: 6 associativity:left)
@@ -46,8 +46,8 @@
               >>:(precedence: 5 associativity :right)
               |=:(precedence: 14 associativity:right))
 
-      postfix:( --: (precedence:1)
-                ++: (precedence:1)
+      postfix:( --: (precedence:1 operation:decrement)
+                ++: (precedence:1 operation:decrement)
                 #28 : (precedence:1)
                 [ : (precedence:1))
 

@@ -2,7 +2,20 @@
 # toc.o scope.o
 # expression.o
 
-OBJ =  main.o map.o lex.o parse.o runtime.o statement.o declarator.o expression.o union.o syntax.o data.o
+OBJ =\
+   data.o\
+   declarator.o\
+   expression.o\
+   lex.o\
+   main.o\
+   map.o\
+   parse.o\
+   runtime.o\
+   statement.o\
+   syntax.o\
+   toc.o\
+   union.o
+
 HEADERS = pacc.h runtime.h
 
 #clang on free

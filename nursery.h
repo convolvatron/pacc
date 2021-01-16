@@ -79,6 +79,7 @@ static inline value table_from_nursery(nursery n)
          __i1++, __i2++)
 
 #define push_mut_buffer(__n, __b) push_mut(__n, contentsu8((buffer)__b), ((buffer)__b)->length)
+// ampersand? 
 #define push_mut_value(__n, __v)  push_mut(__n, &__v, bitsizeof(value))
 
 // since these are usually small...ordered iteration!

@@ -32,8 +32,8 @@ typedef struct result {
 } result;
 
 #define res(__v, __o) ({struct result __k = {true, __v, __o, 0}; __k;})
-// yes, we do want offsets on failure!
 #define failure(__v, __o) ({struct result __k = {false, __v, __o, 0}; __k;})
+#define isfailure(__r) (!((__r).success))
 
 result read_subscript_expr(parser p, index offset, scope env, Node node);
 result read_expression(parser p, index offset, scope env);
@@ -210,3 +210,5 @@ static inline value set_internal(value trash, ...)
 
 #define set(...) set_internal(0, __VA_ARGS__, INVALID_ADDRESS)
 
+
+string emit_expression(value v);
