@@ -175,10 +175,11 @@ result read_cast_expression(parser p, index offset, scope env);
 // these are macros so I get some traceability
 
 // eof check
+//    outputline(print(v));                     
+//    printf("[%s:%d:%s %lld)]\n", __FILE__, __LINE__,__FUNCTION__, __offset); \
+
 #define token(__p, __offset)                        \
     ({value v = get(p->tokens, (value)__offset);    \
-      printf("[%s:%d:%s %lld)]\n", __FILE__, __LINE__,__FUNCTION__, __offset); \
-    outputline(print(v));\
     v;})
 
 #define next_token(__p, __offset, __kind) ({            \

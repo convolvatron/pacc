@@ -181,11 +181,8 @@ value keys(value a)
 string emit_expression(value v)
 {
     value vv;
-
-    // keys is a set
-    outputline(sym(emit_expression), keys(v));
     
-    if ((vv = get(v, sym(value)))) return vv;
+    if ((vv = get(v, sym(value)))) return print(vv);
     
     return concat(stringify("("),
                   emit_expression(get(v, sym(left))),

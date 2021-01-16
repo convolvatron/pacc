@@ -104,7 +104,7 @@ value parse(buffer b)
     parser p = malloc(sizeof(struct parser)); // xxx stdlib - we're about to kill this guy anyways
     value root = world();
 
-    outputline(print(root));
+    //  outputline(print(root));
     value keywords = allocate_nursery(60);
     foreach (k1, v1, get(root, sym(operators))){
         foreach (k2, v2, v1) {

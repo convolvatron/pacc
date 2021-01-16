@@ -13,9 +13,7 @@ result middle(parser p, u64 offset, scope env, u64 left_precedence, value left)
     value t = token(p, offset);
     value op = pget(env, sym(operators), sym(binary), get(t, sym(value)));
     if (!op) return failure(stringify("operator not found"), offset);
-    outputline(sym(op), print(op));
     result right =  leaf(p, offset+1, env, (u64)get(op, sym(precendence)));
-    outputline(print(right.v));
     return res(timm(sym(right), right.v,
                     sym(left), left,
                     sym(operator), op),               
@@ -50,6 +48,8 @@ result leaf(parser p, u64 offset, scope env, u64 left_precedence)
 result read_expression(parser p, u64 offset, scope env)
 {
     result z = leaf(p, offset, env, 0);
+    printf("result: [%s %p %lld %p]", z.success?"true":"false", z.v, z.offset, z.env);
+    //    outputline(sym("pag"), print(z.v));
     output(emit_expression(z.v));
     halt("zig");
     return z;

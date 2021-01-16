@@ -172,7 +172,6 @@ u64 scan_keyword(lexer lex, u64 start, value keywords)
     }
     
     if (scan > start) {
-        printf("scan keyword %lld %lld\n", start, scan);
         make_token(lex->out, start, scan, keyword, substring(lex->b, start, scan));
         return scan;
     }
