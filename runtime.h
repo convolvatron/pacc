@@ -87,7 +87,7 @@ static inline value stringify(char *x)
 void table_insert(buffer t, value k, value v);
 value table_get(value t, value k);
 
-void output(buffer b);
+void output(value b);
 void outputline_internal(void *trash, ...);
 #define outputline(...) outputline_internal(0, __VA_ARGS__, INVALID_ADDRESS);
 

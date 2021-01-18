@@ -183,16 +183,35 @@ buffer format_number(value v, int base)
 }
 
 
-void output(buffer b)
+// not sure if this repacking is really necessary for this version, and in the
+// compiled version it will be an ordering constraint..but here it is
+void output(value b)
 {
-    // ordering!
+    nursery n = allocate_nursery(nzv(b)*bitsizeof(character));
+    u64 max = 0;
+    
     foreach(k, v, b) {
         if (tagof(v) != tag_small) {
             halt("output non-char-vector", v);
-        }
-        u64 x = (u64)v;
-        write(1, &x, bytesof(utf8_length(x)));
+        }        
+        character c = (u64)v;
+        u64 off = ((u64)k)*bitsizeof(character);
+        nursery_set(n, off, &c, bitsizeof(character));
+        if (off > max) max = off;
+
     }
+    u8 *packed = n->resizer + bytesof(max + bitsizeof(character));
+    u8 *source = packed;
+    u64 total = 0;
+    
+    while((source -= sizeof(character)) >= n->resizer) {
+        character c = *(character *)source;
+        int blen = bytesof(utf8_length(c));
+        packed -= blen;
+        __builtin_memcpy(packed, source, blen);
+        total += blen;
+    }
+    write(1, packed, total);
 }
 
 void outputline_internal(void *trash, ...)
@@ -271,9 +290,10 @@ value concat_internal(value trash, ...)
     u64 offset = 0, o2;
     // maybe validate that the inputs are all vector-shaped?
     foreach_arg(trash, b) {
-        foreach_ordered(k, v, b) {
+        o2 =0;
+        foreach(k, v, b) {
             u64 p = (u64)k + offset;
-            if ((u64)k < o2) o2 = (u64)k;
+            if (p >= o2) o2 = p + 1;
             table_insert(t, (value)p, v);
         }
         offset = o2;

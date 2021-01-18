@@ -10,16 +10,22 @@ typedef struct nursery { //ahem
     bits length;
 } *nursery;
 
+static void nursery_set(nursery n, u64 offset, void *source, bits length)
+{
+    if (n->length < offset + length)  {
+        n->length *= 2;
+        n->length += length; // meh
+        n->resizer = realloc(n->resizer, n->length);        
+    }
+    __builtin_memcpy(n->resizer + bytesof(offset), source, bytesof(length));    
+}
+
 static inline void push_mut(nursery e, void *source, bits length)
 {
-    if (e->length < e->offset + length)  {
-        e->length *= 2;
-        e->length += length; // meh
-        e->resizer = realloc(e->resizer, e->length);
-    }
-    __builtin_memcpy(e->resizer + bytesof(e->offset), source, bytesof(length));
+    nursery_set(e, e->offset, source, length);
     e->offset += length;
 }
+
 
 static inline nursery allocate_nursery(bits size)
 {

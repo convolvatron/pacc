@@ -1,0 +1,118 @@
+(operations:(
+             multiply:()
+                      add:())
+
+            
+ registers:(
+            a:(index:0)
+              c: (index:1)
+              d: (index:10)
+              b: (index:11)
+              sp: (index:100)
+              bp: (index:101)
+              si: (index:110)
+              di: (index:111)
+              8: (index:1000)
+              9: (index:1001)
+              10: (index:1010)
+              11: (index:1011)
+              12: (index:1100)
+              13: (index:1101)
+              14: (index:1110)
+              15: (index:1111))
+
+
+ rex:(layout:(
+              0:(name:demux constant:0100 length:4)
+                1:(name:w length:1)
+                2:(name:r length:1)
+                3:(name:sib length:1)
+                4:(name:rm length:1))))
+(name:sib [(name:scale length:2)
+          (name:index length:3)
+          (name:base length:3)])
+
+(name:gdtdesc [(name:base length:32)
+              (name:size length:16)])
+
+
+
+(name:gdtentry
+ [(name:base length:16 )
+ (name:limit length:16 )
+ (name:base2 length:8)
+ (name:flags length:4)
+ (name:limit length:4)
+ (name:access length:4)
+ (name:base3 length:4)]
+
+
+ (name:block_descriptor_map
+  length:8 constant:8
+  length:8 constant:0
+  name:sectors    length:16
+  name:offset     length:16
+  name:segment    length:16
+  name:sector     length:32
+  name:sectorm    length:32
+
+
+  (name:cr0 layout:[
+            name:protected mode enable
+            name:monitor co-processor
+            name:emulation
+            name:task switched
+            name:extension type
+            name:numeric error
+            (length:11)
+            name:write protect
+            (length:11)
+            name:alignment mask
+            (length:11)
+            name:not-write through)
+  name:cachedisable
+  name:paging])
+
+ ame:gdt_entry layout:[
+ (name:present length:1)
+ (name:privilege length:2) # 0 is highest
+ (length:1 value:1)
+ (name:executable length:1)
+ (name:direction length:1)
+ (name:writable length:1)
+ (name:accessed length:1)
+ ])
+
+(name:gdt_flags layout:[
+                (name:granularity length:1)
+                (name:length length:1)
+                (length:1 value:0)
+                ])
+
+
+
+(name:cr4 layout:[
+          (name:vme length:1 doc:"virtual 8086 mode extensions")
+          (name:pvi length:1 doc:"protected mode virtual interrupts")
+          (name:tsd length:1 doc:"time stamp disable")
+          (name:de length:1  doc:" debugging extensions")
+          (name:pse length:1 doc:"page size extension")
+          (name:pae length:1 doc:"physical address extension")
+          (name:mce length:1 doc:"machine check exception")
+          (name:pge length:1 doc:"page global enable")
+          (name:pce length:1 doc:"performance monitoring counter enable")
+          (name:osfxsr length:1 doc:"os support for fxsave and fxrstor instructions")
+          (name:osxmmexcpt length:1 doc:"os support for unmasked simd floating point exceptions")
+          (name:umip length:1 doc:"user mode instruction prevention")
+             (name:unused length:1")
+   (name:vmxe length:1 doc:"virtual machine extensions enable")
+   (name:smxe length:1 doc:"safer mode extensions enable")
+   (length:2)
+   (name:pcide length:1 doc:"pcid enable")
+   (name:osxsave length:1 doc:"xsave and processor extended states enable")
+   (length:1)
+   (name:smep length:1 doc:"supervisor mode executions protection enable")
+   (name:smap length:1 doc:"supervisor mode access protection enable")])
+
+
+                

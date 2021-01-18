@@ -183,10 +183,12 @@ string emit_expression(value v)
     value vv;
     
     if ((vv = get(v, sym(value)))) return print(vv);
-    
-    return concat(stringify("("),
+
+    outputline(print(pget(v, sym(operator), sym(operation))));
+    return concat(pget(v, sym(operator), sym(operation)),
+                  stringify("("),
                   emit_expression(get(v, sym(left))),
-                  get(v, sym(operation)),
+                  stringify(", "),                  
                   emit_expression(get(v, sym(right))),
                   stringify(")"));
 }

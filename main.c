@@ -11,7 +11,6 @@ char *a[]={"int x = 2 + y * 7 + 3;",
 int main(int argc, char **argv)
 {
     runtime_init();
-
     for (int i = 0; i < sizeof(a)/sizeof(char *); i++) {
         int len = 0; 
         while (a[i][len]) len++;
