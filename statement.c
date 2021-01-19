@@ -229,7 +229,7 @@ static result read_goto_stmt(parser p, index offset, scope env) {
 
         result expr = read_cast_expression(p, offset, env);
         if (pget(expr.v, sym(type), sym(kind)) != sym(ptr))
-            error("pointer expected for computed goto, but got %s", node2s(expr));
+            error("pointer expected for computed goto, but got %s", emit_expression(expr.v));
         return res(ast_computed_goto(expr.v), expr.offset);
     }
     tuple tok = token(p, offset);

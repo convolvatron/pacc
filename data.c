@@ -8,6 +8,7 @@
   __o2;\
 })
 
+// comments, vectors, sets
 result parse_value(buffer b, u64 offset)
 {
     static value whitespace = 0, terminus;

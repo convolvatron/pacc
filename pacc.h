@@ -12,8 +12,9 @@ typedef buffer vector;
 
 typedef value tuple;
 typedef tuple Node;
-
-#define error(f, ...) ({result r = res(stringify(f), 0); r.success=false; r;})
+                                    
+#define error(...)\
+    ({struct result __k = {false, concat_internal(0, __VA_ARGS__, INVALID_ADDRESS), 0, 0}; __k;})
 
 boolean is_keyword(tuple tok, string c);
 value parse(buffer b);
@@ -175,11 +176,14 @@ result read_cast_expression(parser p, index offset, scope env);
 // these are macros so I get some traceability
 
 // eof check
-//    outputline(print(v));                     
-//    printf("[%s:%d:%s %lld)]\n", __FILE__, __LINE__,__FUNCTION__, __offset); \
+
+extern int token_trace;
 
 #define token(__p, __offset)                        \
     ({value v = get(p->tokens, (value)__offset);    \
+    if (token_trace) {\
+        printf("[%s:%d:%s %lld)]\n", __FILE__, __LINE__,__FUNCTION__, __offset);} \
+	outputline(print(v));                                                   \
     v;})
 
 #define next_token(__p, __offset, __kind) ({            \
@@ -191,7 +195,7 @@ result read_cast_expression(parser p, index offset, scope env);
 #define expect(__p, __offset, __id) {                  \
         tuple __tok = token(__p, __offset);                 \
         if (!is_keyword(__tok, __id))                           \
-            return error("'%c' expected, but got", __id, __tok);  \
+            return error(stringify("'"), __id, stringify("expected, but got"), __tok); \
     }
 
 vector read_decl_init(parser p, index offset, scope env, Type ty);

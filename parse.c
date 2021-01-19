@@ -1,6 +1,6 @@
-// Copyright 2012 Rui Ueyama. Released under the MIT license.
 #include "pacc.h"
-#include <stdlib.h>
+
+int token_trace = 1;
 
 // cache stringyify
 
@@ -104,16 +104,16 @@ value parse(buffer b)
     parser p = malloc(sizeof(struct parser)); // xxx stdlib - we're about to kill this guy anyways
     value root = world();
 
-    //  outputline(print(root));
     value keywords = allocate_nursery(60);
     foreach (k1, v1, get(root, sym(operators))){
         foreach (k2, v2, v1) {
-            // soft intern
+            // soft intern - a union does that, right? i think we disabled overwrite panics
             push_mut_value(keywords, k2);
         }
     }
-    
-    p->tokens = lex(b, set_from_nursery(keywords));
+
+    p->tokens = lex(b, combine(set_from_nursery(keywords),
+                               get(root, sym(tokens))));
     
     u64 scan = 0;
     while (get(p->tokens, (value)scan)) {

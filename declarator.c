@@ -22,18 +22,27 @@ result listof(parser p, u64 offset, scope env,
               value separator, value terminus, reader each)
 {
     nursery n = allocate_nursery(10);
-    while (offset < nzv(p->tokens)) {
+    u64 here = offset;
+    while (here < nzv(p->tokens)) {
         // chain environments?
-        result e = each(p, offset, env);
+        result e = each(p, here, env);
+        outputline (stringify("each:"), print(e.v));
         if (iserror(e)) return e;
-        offset = e.offset;
+        here = e.offset;
         push_mut(n, &e.v, bitsizeof(value));
-        value tok = token(p, offset);
-        if (!is_keyword(tok, separator)) {
-            if (is_keyword(tok, terminus)) {
-                return res(vector_from_nursery(n), offset);
+
+        if (is_keyword(token(p, here), terminus)) {
+            return res(vector_from_nursery(n), here + 1);
+        }
+        
+        value tok;
+        printf("list sep: %p\n", separator);
+        if (separator != zero){
+            if (is_keyword(token(p, here), separator)) {
+                here++;
+            } else {
+                return error("expected separator or terminus got tok", separator, terminus, tok);
             }
-            return error("expected separator or terminus got tok", separator, terminus, tok);
         }
     }
     return error("unterminated grouping starting", offset);
@@ -61,43 +70,30 @@ result read_decl_spec(parser p, index offset, scope env)
     value tok = token(p, offset);
     value k = pget(tok, sym(kind));
     value id = pget(tok, sym(value));    
-    
-    if (k == sym(identifier)){
-        value def = pget(env, sym(types), pget(tok, sym(value)));
-        if (def) return res(def, offset+1);
-    }
-    
+
+    // these are identifiers - kinda ok right?
     if ((id == sym(struct)) || (id == sym(union))) {
-        value tag = zero;
+        offset += 1;
+        value name = zero;
         tuple tok = token(p, offset);
         value r;
         
         if (get(tok, sym(kind)) == sym(identifier)) {
-            tag = pget(env, sym(structs), tag);
-        } 
+            offset += 1;
+            name = tok; // token or base string?
+            //            tag = pget(env, sym(structs), tag);
+        }
         
-        result basetype = read_decl_spec(p, offset, env);
-        // seems odd
-        //        if (pget(basetype, sym(kind)) == sym(struct) && next_token(p, sym(;)))
-        // push(r, timm(type, basetype));
-        //            continue;
-        //        }
-        // clearly we deconstructed something a little too far here
-        //    if (next_token(p, offset, stringify(","))) continue;
-        
-        
-        // seems like expect could be broadened. also float the semis up
-        if (is_keyword(token(p, offset), stringify("}"))) {
-            error("missing ';' at the end of field list", v);
-        } else expect(p, offset, stringify(";"));
-        
-        //        timm("name", name, "type", fieldtype);
-        
-        expect(p, offset, stringify("}"));
-        // umm..       (!next_token(p, offset, stringify("{")))?zero:read_rectype_fields_sub(p, offset, env));    
-        return res(timm("fields", zero), offset);
+        result fields = res(zero, 0);
+        if (get(token(p, offset), sym(value)) == stringify("{")) {
+            printf ("zig!");
+            fields = listof(p, offset+1, env, zero, stringify("}"), read_declaration);
+        }
+        // plus tag!
+        return res(timm("fields", fields.v, "name", name), fields.offset);
     }
     
+
 #if 0
     if (id == sym(enum)) return read_enum_def(p, env);
     
@@ -114,7 +110,14 @@ result read_decl_spec(parser p, index offset, scope env)
     if (id == sym(typeof)) 
         return read_typeof(p, env);
 #endif
-    
+
+    // we might want to misorder these to avoid declarations - this is a syntax
+    // ambiguity that can or cant be resolved?
+    if (k == sym(identifier)){
+        value def = pget(env, sym(types), pget(tok, sym(value)));
+        if (def) return res(def, offset+1);
+    }
+
     error("type mismatch", tok);
     return res(zero, 0);
 }
@@ -243,11 +246,10 @@ result read_declarator(parser p, index offset, scope env, Type basety) {
     return read_declarator_tail(p, offset, env, basety);
 }
 
-
-// this has to be jiggered to include function declarations - there was
-// a scan-ahead-and-unget-tokens loop before
 result read_declaration(parser p, index offset, scope env)
 {
+    value initializer = zero;
+    value name = zero;    
     result basetype = read_decl_spec(p, offset, env);
     
     result ty = read_declarator(p, basetype.offset, env, basetype.v);
@@ -262,15 +264,17 @@ result read_declaration(parser p, index offset, scope env)
         return error("no typedef yet");
     }
 
+    offset = ty.offset;
     // initializer
-    if (next_token(p, ty.offset, sym(=))) {
-        offset = ty.offset + 1; // chaining here?
+    if (next_token(p, offset, sym(=))) {
+        offset = offset + 1; // chaining here?
         vector r = 0;
         if (is_keyword(token(p, offset), stringify("{")) || is_string(ty.v)) {
             tuple tok = token(p, offset);
             value k = pget(tok, sym(kind));
             value v = pget(tok, sym(value));
-            
+
+            // break out the struct case please? what is char *x = {} .. chars, ok
             if (is_string(ty.v)) {
                 if (pget(tok, sym(kind)) == sym(string)) {
                     return res(zero, offset);
@@ -346,15 +350,17 @@ result read_declaration(parser p, index offset, scope env)
             }
             Node var = ast_var(env, ty.v, zero);
         } else {
-            read_expression(p, offset, env);
+            result r = read_expression(p, offset, env);
+            offset = r.offset;
         }
-    }    
-    if (next_token(p, ty.offset, stringify(";"))) return res(zero,ty.offset+1);
-    
-    if (!next_token(p, offset, stringify(":")))
-        return error("';' or ',' are expected, but got %s", peek());
-    
-    return res(zero, ty.offset);
+    }
+
+    expect(p, offset, stringify(";"));    
+    return res(timm(sym(type), ty.v,
+                    sym(name), name, 
+                    sym(initializer), initializer),
+               offset+1);
+    return error("expected semicolon");
 }
 
 

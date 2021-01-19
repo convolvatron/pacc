@@ -48,10 +48,7 @@ result leaf(parser p, u64 offset, scope env, u64 left_precedence)
 result read_expression(parser p, u64 offset, scope env)
 {
     result z = leaf(p, offset, env, 0);
-    printf("result: [%s %p %lld %p]", z.success?"true":"false", z.v, z.offset, z.env);
-    //    outputline(sym("pag"), print(z.v));
     output(emit_expression(z.v));
-    halt("zig");
     return z;
 }
 
